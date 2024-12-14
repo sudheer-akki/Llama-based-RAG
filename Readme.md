@@ -34,7 +34,7 @@ Note: It will copy docker-compose file to the folder
 2. start the Milvus and Attu docker containers using below command
 
 ```
-docker compose up -d
+sudo docker compose up -d
 ```
 **Note:** Open http://${HOST_IP}:8000 on your local browser to access Attu GUI
 
@@ -50,3 +50,14 @@ For example,
 python test.py
 ```
 
+5. Stop the Milvus server
+
+```
+sudo docker compose down
+```
+
+6. Delete Milvus service data
+
+```
+$ sudo rm -rf volumes
+```

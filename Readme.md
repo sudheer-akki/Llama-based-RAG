@@ -36,6 +36,8 @@ Note: It will copy docker-compose file to the folder
 ```
 docker compose up -d
 ```
+**Note:** Open http://${HOST_IP}:8000 on your local browser to access Attu GUI
+
 3. Specify your question for RAG search inside test.py 
 
 For example,

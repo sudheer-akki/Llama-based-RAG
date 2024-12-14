@@ -1,0 +1,9 @@
+huggingface_hub==0.26.5
+langchain_huggingface==0.1.2
+nltk==3.8.1
+pymilvus==2.5.0
+pypdf==5.1.0
+torch==2.5.1
+torch_xla==2.5.1
+tqdm==4.67.1
+transformers==4.47.0

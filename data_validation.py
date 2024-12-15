@@ -6,23 +6,23 @@ from typing import List
 logger = setup_logger(pkgname="rag_database")
 
 
-
-class TextProcess():
+class TextProcess:
     def __init__(self,
-        folder_name: str = "new_files",
-        text_file: str = "extracted_text.txt",
+        folder_name: str,
         stopwords_file: str = "stop_words.txt",
+        remove_stop_words: bool = False,
+        save_text: bool = False
         ):
-        self.cleaned_text = "cleaned_text.txt"
-        self.chunk_text_file = "chunked.txt"
+        self.save_text = save_text
+        self.remove_stop_words = remove_stop_words
         self.stopwords_file = stopwords_file
         self.data_collect = DataCollect(folder_name=folder_name)
-        self.extracted_text = self.data_collect.get_text(text_file=text_file, save_text=True)
+        self.extracted_text = self.data_collect.get_text(save_text=save_text)
         
     def _clean_and_chunk_content(self, 
             chunk_size: int = 50,
             overlap_size: int = 10,
-            save: bool = True) -> List[str]:
+            cleaned_text_file: str = "cleaned_text.txt") -> List[str]:
         try:
             if not isinstance(self.extracted_text, str):
                 logger.error(f"Extracted text is not in string format")
@@ -36,24 +36,28 @@ class TextProcess():
             # Join cleaned lines back into a single string
             cleaned_text = '\n'.join(cleaned_lines)
             cleaned_text = self._clean_text(content = cleaned_text)
-            if save:
-                with open(self.cleaned_text,"w") as f:
+            if self.save_text:
+                logger.info(f"Saving Cleaned text into {cleaned_text_file}")
+                with open(cleaned_text_file,"w") as f:
                     f.write(cleaned_text)
             chunked_text = self._chunk_text(
                 cleaned_text=cleaned_text,
                 chunk_length=chunk_size,
-                overlap_count=overlap_size,
-                save_chunk = True
+                overlap_count=overlap_size
                 )
             return chunked_text
         except Exception as e:
             print(f"An error occurred: {e}")
 
     def _clean_text(self,content) -> str:
-        #text_ = self._remove_stopwords(
-        #    text = content, 
-        #    stopword_file = self.stopwords_file
-        #    )
+        if self.remove_stop_words:
+            logger.info(f"Removing stop words based on {self.stopwords_file}")
+            content = self._remove_stopwords(
+            text = content, 
+            stopword_file = self.stopwords_file
+            )
+        else:
+            logger.error(f" [Error] stop words were not removed")
         logger.info(f"Further cleaning started")    
         # Remove email addresses (handle special characters)
         text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', '', content)
@@ -90,7 +94,6 @@ class TextProcess():
         return text.strip()
     
     def _remove_stopwords(self, text, stopword_file: str) -> str:
-        logger.info(f"Removing stopwords")
         try:
             with open(stopword_file, "r") as f:
                 stop_words = f.read()
@@ -112,7 +115,7 @@ class TextProcess():
             cleaned_text: str, 
             chunk_length: int = 50,
             overlap_count: int = 10,
-            save_chunk=True) -> List[str]:
+            chunk_text_file: str = "chunked_text.txt") -> List[str]:
         logger.info(f"Chunking extracted text")
         words = cleaned_text.split()
         # Initialize the list to store chunks
@@ -125,11 +128,13 @@ class TextProcess():
             chunks.append(' '.join(chunk))
             # Move the starting index for the next chunk by max_length - overlap_count
             i += chunk_length - overlap_count
-        if save_chunk:
+        if self.save_text:
+            logger.info(f"Saving Chunked text into {chunk_text_file}")
             # Save the chunks to a file line by line
-            with open(self.chunk_text_file, 'w') as file:
+            with open(chunk_text_file, 'w') as file:
                 for chunk in chunks:
                     file.write(chunk.strip() + '\n')
+            logger.info(f"Saved Chunked text into {chunk_text_file} successfully")
         return chunks
 
 

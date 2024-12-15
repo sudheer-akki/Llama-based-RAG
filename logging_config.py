@@ -42,5 +42,4 @@ def setup_logger(pkgname):
 
     #Disable propagation to avoid duplicating logs in the root logger
     logger.propagate = False
-    
     return logger

@@ -14,19 +14,28 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 
-class GenerateEmbeddings():
+class GenerateEmbeddings:
     def __init__(
         self,
-        chunk_length: int, 
-        overlap_length: int, 
-        folder_name: str,
-        model_name: str,
-        model_save_path: str,
-        device: str = "cuda"
+        device: str,
+        folder_name: str ="files",
+        embedding_model: str = "sentence-transformers/all-mpnet-base-v2",
+        model_save_path: str = "embedding_model",
+        chunk_length: int = 250, 
+        overlap_length: int = 20, 
+        stopwords_file: str = "stop_words.txt",
+        remove_stop_words: bool = False,
+        save_text: bool = False,
         ):
-        self.model_name = model_name
+        self.save_text = save_text
+        self.model_name = embedding_model
         self.model_save_path = model_save_path
-        self.text_process = TextProcess(folder_name = folder_name)
+        self.text_process = TextProcess(
+            folder_name = folder_name, 
+            stopwords_file = stopwords_file,
+            remove_stop_words = remove_stop_words,
+            save_text=save_text
+        )
         self.chunked_content = \
         self.text_process._clean_and_chunk_content(
         chunk_size=chunk_length,
@@ -67,13 +76,13 @@ class GenerateEmbeddings():
             raise IOError(f"Error loading model from {saved_model}: {e}")
         return embedding_model
 
-    def _make_embeddings(self, query: str = None, embed_save_file: str ="embeddings.txt", embed_save: bool = False):
+    def _make_embeddings(self, query: str = None, embed_save_file: str ="embeddings.txt" ):
         """Making embeddings from chunked text"""
         logger.info("Generating embeddings from chunked data")
         try:
             if query:
                 logger.info("Embedding user query")
-                content_to_embed = [query]
+                content_to_embed = query
             elif isinstance(self.chunked_content, list) and \
                 all(isinstance(i, str) for i in self.chunked_content):
                 logger.info(f"Embedding chunked content from 'files' folder")
@@ -85,34 +94,33 @@ class GenerateEmbeddings():
             logger.error(f"[Error] Error in loading content for embeddings: {e}")
             raise Exception(f"[Error] Error in loading content for embeddings \
                              Provide a query or ensure chunked_content is set.: {e}")
-        # Assuming HuggingFaceEmbeddings has an `embed` method to process the chunks
+        # Assuming HuggingFaceEmbeddings has an `embed` method to process the chunks#
         embeddings = self.model.embed_documents(content_to_embed)
-        if embed_save:
+        if self.save_text:
             logger.info(f"Saving embedded content into {embed_save_file}")
             with open(embed_save_file, "w") as f:
                 for embed in embeddings:
                     f.write(str(embed))
-        #for idx, embedding in enumerate(embeddings):
-        #    print(f"Chunk {idx + 1}: {len(embedding)}")
-        data = [
-            {"id": i, "vector": embeddings[i], "text": self.chunked_content[i]}
-            for i in tqdm(range(len(embeddings)), desc="Creating embeddings")
-        ]
-        logger.info(f"Data has {len(data)} entities, each with fields: {data[0].keys()}")
-        logger.info(f"Vector dim: {len(data[0]['vector'])}")
+            logger.info(f"Saved embedded content into {embed_save_file} successfully")
+        if embeddings:
+            data = [
+                {"id": i, "vector": embeddings[i], "text": content_to_embed[i]}
+                for i in tqdm(range(len(embeddings)), desc="Creating embeddings")
+            ]
+            logger.info(f"Data has {len(data)} entities, each with fields: {list(data[0].keys())}")
+            logger.info(f"Vector dim: {len(data[0]['vector']) if data[0]['vector'] else 'N/A'}")
+        else:
+            logger.error("[Error] Embeddings list is empty. No data created.")
+            data = [{"id": None, "vector": None, "text": None}]
         return data, embeddings
     
 
-class VectorDatabase():
+class VectorDatabase:
     def __init__(self, 
-                 embedding_model: str = "sentence-transformers/all-mpnet-base-v2",
-                 model_save:str = "embedding_model",
-                 folder_name: str = "new_files",
+                 embed_model_loaded,
                  db_name: str ="milvusdemo",
                  collection_name: str="rag_collection",
-                 embedding_dim: int= 768,
-                 chunk_length: int = 100,
-                 overlap_length: int = 10,
+                 embed_dim: int= 768,
                  host: str = "127.0.0.1",
                  port: str = "19530",
                  username: str = "root",
@@ -120,20 +128,14 @@ class VectorDatabase():
                  token: str = "root:Milvus"):
         self.db_name = db_name
         self.collection_name = collection_name
-        self.embedding_dim = embedding_dim
+        self.embed_dim = embed_dim
         self.host = host
         self.port = port
         self.token = token
         self.username = username
         self.password = password
-        self.gen_embedding = GenerateEmbeddings(chunk_length=chunk_length,
-                                                overlap_length=overlap_length,
-                                                folder_name=folder_name,
-                                                model_name=embedding_model,
-                                                model_save_path=model_save)
+        self.gen_embedding = embed_model_loaded
         self._initial_connection_setup()
-
-        
 
     def _initial_connection_setup(self):
         logger.info(f"Connecting to http://{self.host}:{self.port}")
@@ -156,7 +158,7 @@ class VectorDatabase():
                 enable_dynamic_field=True
             )
             self.schema.add_field(field_name="id",datatype=DataType.INT64, is_primary = True, description="primary id")
-            self.schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=self.embedding_dim, description="vector")
+            self.schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=self.embed_dim, description="vector")
             self.schema.add_field(field_name="text",datatype=DataType.VARCHAR,max_length=65535, description="text content")
             self.index_params = self.client.prepare_index_params()
             self.index_params.add_index(
@@ -243,7 +245,7 @@ class VectorDatabase():
                 logger.info(f"{self.collection_name} is ready: {res}")
             self._listout_collections()
             # Insert data
-            self._insert_data()
+            #self._insert_data()
         except MilvusException as e:
             raise Exception(f"[Error] Failed to create {self.collection_name}:{e}")
 
@@ -253,45 +255,56 @@ class VectorDatabase():
         logger.info("Inserting embedded data into Milvus server")
         try:
             data,_ = self.gen_embedding._make_embeddings()
-            self.client.insert(
-                collection_name=self.collection_name,  
-                data= data
-            )
-            logger.info(f"Successfully inserted embedded data into {self.collection_name}")
+            # Check if data is valid for insertion
+            if data and any(item["id"] is not None for item in data):
+                self.client.insert(
+                    collection_name=self.collection_name,  
+                    data=data
+                )
+                logger.info(f"Successfully inserted {len(data)} embedded data into {self.collection_name}")
+            else:
+                logger.error("[Error] No valid data to insert. Skipping insertion.")
         except Exception as ex:
-            logger.error(f"Unable to insert data to Milvus:{ex}")
+            logger.error(f"[Error] Unable to insert data to Milvus:{ex}")
             raise Exception(f"[Error] Unable to insert data to Milvus: {ex}")
         
       
-    def _search_and_output_query(self, question: str):
-        """Making embeddings for User Query"""
+    def _search_and_output_query(self, question: str, json_indent:int, response_limit: int):
+        """Generates Embeddings and returns retrieved data
+        Args:
+            question (str): User Query
+            response_limit (int): Number of output responses from database
+            json_indent (int): Indentation limit for Json output format
+        Raises:
+            Exception: If unable to retrieve data
+        """
         try:
             logger.info(f"Creating embeddings for the User Query")
             _, query_embeddings = self.gen_embedding._make_embeddings(query=question)
-            #print(f"Embedding sample: {query_embeddings[0][:5]}")
-            print("Query_embeddings",len(query_embeddings[0]))
+            print(f"Embedding sample: {query_embeddings[0][:5]}")
+            logger.info(f"User query embedding dim : {len(query_embeddings[0])}")
             search_res = self.client.search(
             collection_name=self.collection_name,
             anns_field="vector",
             data=[query_embeddings[0]],  
-            limit=1,  # Return top 3 results
+            limit=response_limit,  # Return top 3 results
             search_params={"metric_type": "COSINE",  "params": {}},  # Inner product distance
             output_fields=["text"],  # Return the text field
             )
         except Exception as e:
             logger.error(f"[Error] unable to query search: {e}")
             raise Exception(f"[Error] unable to query search: {e}")
-        output = self._get_retrieved_info(search_res=search_res)
+        output = self._get_retrieved_info(search_res=search_res,json_indent=json_indent)
         return output
 
 
-    def _get_retrieved_info(self, search_res: str):
+    def _get_retrieved_info(self, json_indent: int, search_res: str):
         """Retrieving user query from Milvus DB"""
         try:
             retrieved_lines_with_distances = [
                 (res["entity"]["text"], res["distance"]) for res in search_res[0]
                 ]
-            return json.dumps(retrieved_lines_with_distances, indent=3)
+            return json.dumps(retrieved_lines_with_distances, indent=json_indent)
         except MilvusException as e:
             logger.error(f"[Error] Unable to output query results: {e}")
             raise Exception(f"[Error] Unable to output query results: {e}")
@@ -313,8 +326,8 @@ class VectorDatabase():
 if __name__ == "__main__":
     try:
         vector_db = VectorDatabase() # Assuming GenerateEmbeddings() is a class you've defined
-        question = "what is Glunet ?"
-        context_passages = vector_db._search_and_output_query(question=question)
+        question = "what is Glunet model and how it works ?"
+        context_passages = vector_db._search_and_output_query(question=question,response_limit=3, json_indent=3)
         subprocess.run(['rm', '-rf', 'file_list.txt'], check=True)
         vector_db._delete_database_and_collection()
         print(context_passages)

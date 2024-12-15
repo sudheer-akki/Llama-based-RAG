@@ -1,0 +1,6 @@
+outs:
+- md5: 122a9d90675930fe360ce584f090e9c5
+  size: 604
+  isexec: true
+  hash: md5
+  path: stop_words.txt

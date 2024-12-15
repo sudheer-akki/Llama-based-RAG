@@ -1,6 +1,10 @@
 ## RAG System using Milvus Vector Database
 
-### prerequisites:
+### List of AI models:
+* all-mpnet-base-v2 - For generating embeddings (Dim-768) from local files
+* Llama-3.2-1B - For generating reponse based on RAG search results
+
+### Prerequisites:
 
 * Install Milvus docker standalone server 
 
@@ -38,17 +42,45 @@ sudo docker compose up -d
 ```
 **Note:** Open http://${HOST_IP}:8000 on your local browser to access Attu GUI
 
-3. Specify your question for RAG search inside test.py 
-
-For example,
-
-**question** = "what is your name ? 
-
-4. Start the RAG system using below command
+3. To update Milvus DB with local files data
 
 ```
-python test.py
+python update_db.py
 ```
+
+4. To perform semantic search
+
+* open update_db.py and update query
+
+* For example,
+
+  **query** = "what is your name ?
+
+```
+python update_db.py
+``` 
+
+4. To test **Llama-3.2-1B**
+
+* open test_llama.py and update query
+
+* For example,
+
+  **query** = "what is your name ?
+
+```
+python test_llama.py
+```
+
+5. To run backend with FastAPI
+
+**Note:** Make sure to run Milvus container
+
+```
+python main.py
+```
+* open port 2000 in localhost to access backend service
+
 
 5. Stop the Milvus server
 
@@ -61,3 +93,5 @@ sudo docker compose down
 ```
 $ sudo rm -rf volumes
 ```
+
+**Note:** In the last, make sure to stop the running Milvus container

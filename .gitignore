@@ -30,13 +30,17 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-
-embedding_model
 text_model
-files
 new_files
 volumes
 *.txt
 # Except requirements.txt
 !requirements.txt
+!stop_words.txt
+!file_list.txt
 logs
+/Llama-3.2-1B
+/embedding_model
+/file_list.txt
+/files
+/stop_words.txt

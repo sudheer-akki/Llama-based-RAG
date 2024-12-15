@@ -6,26 +6,9 @@ from typing import Tuple
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 
-"""
-Falcon: One of the most efficient open-source models. 
-The Falcon series includes Falcon-7B and Falcon-40B, 
-which offer competitive performance for NLP tasks.
-trained on 350B tokens of RefinedWeb. 
-It is made available under the Apache 2.0 license.
-For SOTA models, we recommend using Falcon-7B/40B, 
-both trained on >1,000 billion tokens."""
-
-device_map = {
-    "transformer.word_embeddings": 0,
-    "transformer.word_embeddings_layernorm": 0,
-    "lm_head": "cpu",
-    "transformer.h": 0,
-    "transformer.ln_f": 0,
-}
-
 class TextModel:
     #@ensure_annotations
-    def __init__(self, model_name:str, model_dir:str,max_tokens:int = 1024, temperature:float = 0.2, top_p:float = 0.6,\
+    def __init__(self, model_name:str, model_dir:str,max_tokens:int = 1024, device: str = "cuda", temperature:float = 0.2, top_p:float = 0.6,\
                  top_k:int = None, num_return_seq:int = 2, rep_penalty:float = 2.5, do_sample:bool = True, \
                  ):
         """
@@ -43,8 +26,8 @@ class TextModel:
             TypeError: If the model file is not a string. 
         """
         #self.save_dir = os.path.join(os.getcwd(),model_dir)
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Device: {self.device}")
+        logger.info(f"Device: {device}")
+        self.device = device
         #User-defined generation configuration
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -121,14 +104,14 @@ class TextModel:
         """
         try:
             logger.info(f"Loading tokenizer from '{os.path.basename(model_dir)}' folder.") 
-            tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote =True)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote =True)
             tokenizer.pad_token = tokenizer.eos_token 
         except IOError as e:
             logger.error(f"[Error] Unable to load tokenizer from {os.path.basename(model_dir)}")
             raise IOError(f"Error loading Tokenizer from {os.path.basename(model_dir)}: {e} ")
-            #self.tokenizer = AutoTokenizer.from_pretrained(self.model_name,cache_dir=self.save_dir)
-            #self.tokenizer.pad_token = self.tokenizer.eos_token
-            #logger.info(f"Downloaded and loaded tokenizer from {self.save_dir} folder")
+            #tokenizer = AutoTokenizer.from_pretrained(model_name,cache_dir=model_dir)
+            #tokenizer.pad_token = self.tokenizer.eos_token
+            #logger.info(f"Downloaded and loaded tokenizer from {model_dir} folder")
         try:
             logger.info(f"Loading model from '{os.path.basename(model_dir)}' folder")  
             model = AutoModelForCausalLM.from_pretrained(model_dir,revision="main",trust_remote_code=True)
@@ -153,7 +136,7 @@ class TextModel:
             logger.error(f"Error while downloading '{model_name}' into '{model_save_path}'")
             raise Exception(f"Error while downloading '{model_name}' into '{model_save_path}': {e}") 
 
-    def model_response(self,message: str) -> str:
+    def model_response(self,message: str, skip_special_tokens: bool = True) -> str:
         """
         Args:
             message(str): Input message in string format
@@ -170,7 +153,7 @@ class TextModel:
                 input_ids = encoding.input_ids,
                 attention_mask = encoding.attention_mask,
                 generation_config = self.generation_config)
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=skip_special_tokens)
         return response
 
 

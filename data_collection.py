@@ -1,21 +1,18 @@
 import os
 from typing import List
 from pypdf import PdfReader
-import sys
-import traceback
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 
 
 class DataCollect:
-    def __init__(self, folder_name: str = "files"):
+    def __init__(self, folder_name: str):
         self.folder_name = folder_name
         self.folder = os.path.join(os.getcwd(),self.folder_name)
         self.total_files = self.check_file_names()
         self.file_checker = FolderChecker(folder_path= self.folder, file_collection = self.total_files)
         _, self.files = self.file_checker._check_unique_files()
-        #self.get_text()
-        #self.save_text() # to save text
+        
 
     def check_file_names(self) -> List[str] :
         logger.info(f"Checking files in {self.folder_name} folder")
@@ -31,7 +28,7 @@ class DataCollect:
         logger.info(f"Checking any new files inside {self.folder_name}")
         self.unique_file_count, self.files = self.file_checker.check_unique_files()
 
-    def load_content(self, save_text_file: str, save = True) -> str:
+    def load_content(self, save_text: bool = True) -> str:
         text_content = ""
         logger.info(f"Loading content from {self.folder_name} folder")
         for file in self.files:
@@ -44,8 +41,8 @@ class DataCollect:
                 elif file_path.endswith('.txt'):
                     text = self.load_txt(file_path)
                     text_content+= text
-                if save:
-                    self.save_text(text_content=text_content,text_file=save_text_file)
+                if save_text:
+                    self.save_text(text_content=text_content)
                 logger.info(f"Content loaded successfully")
             except Exception as e:
                 raise Exception(f"Error processing {file_path}: {e}")
@@ -87,15 +84,21 @@ class DataCollect:
             logger.error(f"Error processing text file {file_path}: {e}")
             raise Exception(f"Error processing text file {file_path}: {e}")
 
-    def save_text(self, text_content: str,text_file: str):
+    def save_text(self, text_content: str, text_file: str = "extracted_text.txt"):
         logger.info(f"Saving extracted content to {text_file}")
         with open(text_file,"w") as f:
             f.write(text_content)
         logger.info(f"Saved extracted content to {text_file}")
 
-    def get_text(self, text_file: str, save_text: bool) -> str:
+    def get_text(self, save_text: bool) -> str:
+        """
+        Args:
+            save_text (bool): save text flag
+        Returns:
+            str: Extracted text from files
+        """
         logger.info(f"Getting extracted content")
-        extracted_text = self.load_content(save_text_file= text_file, save=save_text)
+        extracted_text = self.load_content(save_text=save_text)
         logger.info(f"Extracted content from files successfully")
         return extracted_text 
                         

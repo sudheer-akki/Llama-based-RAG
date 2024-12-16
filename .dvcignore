@@ -37,6 +37,11 @@ env/
 # Log files
 *.log
 
+# ignore local Terraform files
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+
 # Local configuration files
 *.local
 config.local.yaml

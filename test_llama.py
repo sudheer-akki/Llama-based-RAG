@@ -8,7 +8,7 @@ MODEL_DIR = os.getenv("MODEL_DIR")
 
 if __name__=="__main__":
 
-    query = "what is your name ?"
+    query = "what is vision transformer model ?"
     
     try:
         model = TextModel(model_name=MODEL_NAME, model_dir=MODEL_DIR) 

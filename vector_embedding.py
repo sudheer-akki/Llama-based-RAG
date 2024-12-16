@@ -8,7 +8,6 @@ from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from huggingface_hub import snapshot_download
 from pymilvus import MilvusClient, connections, MilvusException, utility, db, DataType
-from llm_model import TextModel
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 from logging_config import setup_logger 
@@ -21,8 +20,8 @@ class GenerateEmbeddings:
         folder_name: str ="files",
         embedding_model: str = "sentence-transformers/all-mpnet-base-v2",
         model_save_path: str = "embedding_model",
-        chunk_length: int = 250, 
-        overlap_length: int = 20, 
+        chunk_length: int = 150, 
+        overlap_length: int = 10, 
         stopwords_file: str = "stop_words.txt",
         remove_stop_words: bool = False,
         save_text: bool = False,
@@ -125,7 +124,8 @@ class VectorDatabase:
                  port: str = "19530",
                  username: str = "root",
                  password: str = "Milvus",
-                 token: str = "root:Milvus"):
+                 token: str = "root:Milvus",
+                 metric_type: str = "COSINE"):
         self.db_name = db_name
         self.collection_name = collection_name
         self.embed_dim = embed_dim
@@ -134,6 +134,7 @@ class VectorDatabase:
         self.token = token
         self.username = username
         self.password = password
+        self.metric_type = metric_type
         self.gen_embedding = embed_model_loaded
         self._initial_connection_setup()
 
@@ -160,6 +161,7 @@ class VectorDatabase:
             self.schema.add_field(field_name="id",datatype=DataType.INT64, is_primary = True, description="primary id")
             self.schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=self.embed_dim, description="vector")
             self.schema.add_field(field_name="text",datatype=DataType.VARCHAR,max_length=65535, description="text content")
+
             self.index_params = self.client.prepare_index_params()
             self.index_params.add_index(
                 field_name="id",
@@ -167,8 +169,10 @@ class VectorDatabase:
             )
             self.index_params.add_index(
                 field_name="vector",
-                index_type="AUTOINDEX",
-                metric_type="COSINE"
+                index_type="IVF_FLAT", #Quantization-based index; High-speed query & Requires a recall rate as high as possible
+                index_name="vector_index",
+                metric_type=self.metric_type, #inner product
+                params={ "nlist": 128 } #IVF_FLAT divides vector data into nlist cluster units; Range: [1, 65536]; default value: 128
             )
         except Exception as ex:
             logger.error(f"[Error] Unable to connect to Milvus Client: {ex}")
@@ -283,12 +287,13 @@ class VectorDatabase:
             _, query_embeddings = self.gen_embedding._make_embeddings(query=question)
             print(f"Embedding sample: {query_embeddings[0][:5]}")
             logger.info(f"User query embedding dim : {len(query_embeddings[0])}")
+            logger.info(f"[Important] using: {self.metric_type} metric type")
             search_res = self.client.search(
             collection_name=self.collection_name,
             anns_field="vector",
             data=[query_embeddings[0]],  
             limit=response_limit,  # Return top 3 results
-            search_params={"metric_type": "COSINE",  "params": {}},  # Inner product distance
+            search_params={"metric_type": self.metric_type,  "params": {}},  # Inner product distance
             output_fields=["text"],  # Return the text field
             )
         except Exception as e:

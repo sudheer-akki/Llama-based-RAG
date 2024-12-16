@@ -155,7 +155,3 @@ class TextModel:
                 generation_config = self.generation_config)
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=skip_special_tokens)
         return response
-
-
-if __name__=="__main__":
-    MODEL_NAME = "vilsonrodrigues/falcon-7b-instruct-sharded"

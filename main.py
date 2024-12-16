@@ -75,8 +75,7 @@ async def startup_event():
         global vector_db
         vector_db = VectorDatabase(
             embed_model_loaded = GenerateEmbeddings(
-                device=device,
-                chunk_length=150 # output chunk length
+                device=device
             ),
             db_name = "milvusdemo",
             collection_name = "rag_collection",
@@ -85,7 +84,8 @@ async def startup_event():
             port = "19530",
             username = "root",
             password = "Milvus",
-            token = "root:Milvus"
+            token = "root:Milvus",
+            metric_type="COSINE"
         )
     except Exception as e:
             print(f"An error occurred while initializing VectorDatabase: {e}")
@@ -96,7 +96,7 @@ async def startup_event():
         model = TextModel(model_name=MODEL_NAME,
                             model_dir=MODEL_DIR,
                             device= device,
-                            max_tokens = 2096, #max_token=1,28,000
+                            max_tokens = 1026, #max_token=1,28,000
                             temperature = 0.2, 
                             top_p = 0.6,
                             top_k = None,
@@ -154,7 +154,7 @@ async def get_response(query: str = Query(...)) -> dict:
 
 
 if __name__=="__main__":
-    subprocess.run(['uvicorn', 'main:app', '--host','localhost', '--port', '2000', '--reload-dir','files'], check=True)
+    subprocess.run(['uvicorn', 'main:app', '--host','localhost', '--port', '2000','--reload', '--reload-dir','files'], check=True)
 
        
  

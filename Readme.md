@@ -95,3 +95,19 @@ $ sudo rm -rf volumes
 ```
 
 **Note:** In the last, make sure to stop the running Milvus container
+
+7. To download AI Models and data files using DVC
+
+* clone this repo and then run below command.
+
+```
+$ dvc pull 
+```
+**Note:** it will pull all the files into cloned directory
+
+Incase of only one single file download 
+
+```
+$ dvc get "this repo URL" file or folder name 
+```
+It will download the corresponding files into local folder.

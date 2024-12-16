@@ -1,4 +1,5 @@
 from data_collection import DataCollect
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import re
 from nltk.tokenize import word_tokenize
 from logging_config import setup_logger 
@@ -18,11 +19,19 @@ class TextProcess:
         self.stopwords_file = stopwords_file
         self.data_collect = DataCollect(folder_name=folder_name)
         self.extracted_text = self.data_collect.get_text(save_text=save_text)
-        
+                
     def _clean_and_chunk_content(self, 
-            chunk_size: int = 50,
-            overlap_size: int = 10,
+            chunk_size: int,
+            overlap_size: int,
             cleaned_text_file: str = "cleaned_text.txt") -> List[str]:
+        
+        """Intializing Text Splitter from Langchain"""
+        logger.info(f"chunk length: {chunk_size}; overlap size: {overlap_size}")
+        """text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=chunk_size,
+                    chunk_overlap=overlap_size,
+                    length_function=len,
+                    is_separator_regex=False,)"""
         try:
             if not isinstance(self.extracted_text, str):
                 logger.error(f"Extracted text is not in string format")
@@ -45,6 +54,7 @@ class TextProcess:
                 chunk_length=chunk_size,
                 overlap_count=overlap_size
                 )
+            #chunked_text = text_splitter.split_text(cleaned_text)
             return chunked_text
         except Exception as e:
             print(f"An error occurred: {e}")

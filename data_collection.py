@@ -1,6 +1,7 @@
 import os
 from typing import List
 from pypdf import PdfReader
+from langchain_community.document_loaders import PyPDFium2Loader
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 
@@ -59,7 +60,10 @@ class DataCollect:
                 logger.error(f"{file_path} not found")
                 raise FileNotFoundError(f"{file_path} not found")
             reader = PdfReader(file_path)
+            #reader = PyPDFium2Loader(file_path)
             text = ""
+            #for page in reader.load():
+            #    print("langchain", page)
             for page in reader.pages:
                 page_text = page.extract_text()
                 if page_text:

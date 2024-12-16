@@ -1,3 +1,50 @@
 # Add patterns of files dvc should ignore, which could improve
 # the performance. Learn more at
 # https://dvc.org/doc/user-guide/dvcignore
+
+# Ignore temporary and system files
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# Compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Python test cache
+.pytest_cache/
+
+# Python distribution / packaging
+*.egg-info/
+build/
+dist/
+
+# Virtual environment directories
+venv/
+env/
+.venv/
+.env
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Log files
+*.log
+
+# Local configuration files
+*.local
+config.local.yaml
+
+# Local folders to ignore
+logs/
+text_model/
+volumes/
+*.py
+*.md
+*.yml

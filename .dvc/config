@@ -1,1 +1,4 @@
-
+[core]
+    remote = azureblob
+['remote "azureblob"']
+    url = azure://askmeaiwebappstorage-container/backend-models

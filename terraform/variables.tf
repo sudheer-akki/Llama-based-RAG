@@ -27,9 +27,3 @@ variable "storage_account_contaier_name" {
   type = string
   default = "askmeaiwebappstorage-container"
 }
-
-variable "blob_storage_name" {
-  description = "Name of the Blob storage"
-  type = string
-  default = "backend-models"
-}

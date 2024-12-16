@@ -24,9 +24,3 @@ output "azurerm_storage_container_name" {
   description = "Name of the azurerm storage container name"
   value =  azurerm_storage_container.container.name
 }
-
-
-output "azurerm_storage_blob_name" {
-  description = "Name of the Azure storage blob name"
-  value =  azurerm_storage_blob.blob_storage.name
-}

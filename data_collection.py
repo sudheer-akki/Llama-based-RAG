@@ -1,7 +1,7 @@
 import os
 from typing import List
 from pypdf import PdfReader
-from langchain_community.document_loaders import PyPDFium2Loader
+#from langchain_community.document_loaders import PyPDFium2Loader
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 

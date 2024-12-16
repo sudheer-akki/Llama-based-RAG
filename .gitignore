@@ -31,6 +31,9 @@ share/python-wheels/
 MANIFEST
 
 text_model
+Llama-3.2-1B
+files
+embedding_model
 new_files
 volumes
 *.txt
@@ -39,8 +42,3 @@ volumes
 !stop_words.txt
 !file_list.txt
 logs
-/Llama-3.2-1B
-/embedding_model
-/file_list.txt
-/files
-/stop_words.txt

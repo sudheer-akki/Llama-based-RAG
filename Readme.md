@@ -1,4 +1,4 @@
-## RAG System using Milvus Vector Database
+## RAG System using Milvus Vector Database (Developement branch)
 
 ### List of AI models:
 * all-mpnet-base-v2 - For generating embeddings (Dim-768) from local files

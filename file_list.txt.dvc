@@ -1,6 +1,0 @@
-outs:
-- md5: 097daca12824bbdd3306f3403ac285bd
-  size: 88
-  isexec: true
-  hash: md5
-  path: file_list.txt

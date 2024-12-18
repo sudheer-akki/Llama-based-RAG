@@ -1,6 +1,5 @@
-from vector_embedding import VectorDatabase, GenerateEmbeddings
 import subprocess
-from llm_model import TextModel
+from rag_pipeline import RAGPipeline
 import torch
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +9,8 @@ from dotenv import load_dotenv
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 app = FastAPI()
-
 load_dotenv()
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-MODEL_NAME = os.getenv("MODEL_NAME")
-MODEL_DIR = os.getenv("MODEL_DIR")  
+
 
 def get_origins():
     # Get the frontend URL from environment variables with fallback options
@@ -70,42 +66,13 @@ async def startup_event():
                 logger.warning(f"Invalid origin format: {origin}")
         except Exception as e:
             logger.error(f"Error parsing origin {origin}: {e}", exc_info=True)
-    """ This function will run when the FastAPI application starts. """                      
+    """ This function will run when the FastAPI application starts. """  
     try:
-        global vector_db
-        vector_db = VectorDatabase(
-            embed_model_loaded = GenerateEmbeddings(
-                device=device
-            ),
-            db_name = "milvusdemo",
-            collection_name = "rag_collection",
-            embed_dim = 768,
-            host = "127.0.0.1",
-            port = "19530",
-            username = "root",
-            password = "Milvus",
-            token = "root:Milvus",
-            metric_type="COSINE"
-        )
+        global rag_pipeline
+        rag_pipeline = RAGPipeline(rag_response_limit=3)
+        logger.info("[IMPORTANT] Loaded RAG Pipeline")      
     except Exception as e:
-            print(f"An error occurred while initializing VectorDatabase: {e}")
-
-    try:
-        #"tiiuae/falcon-rw-1b" 
-        global model
-        model = TextModel(model_name=MODEL_NAME,
-                            model_dir=MODEL_DIR,
-                            device= device,
-                            max_tokens = 1026, #max_token=1,28,000
-                            temperature = 0.2, 
-                            top_p = 0.6,
-                            top_k = None,
-                            num_return_seq = 2,
-                            rep_penalty = 2.5,
-                            do_sample = True) 
-
-    except Exception as e:
-        print(f"An error occurred while loading text model: {e}")
+        logger.error(f"An error occurred while loading RAG pipeline: {e}")
 
 @app.get("/")
 async def read_root():
@@ -119,38 +86,23 @@ async def health():
 
 @app.get("/search")
 async def get_response(query: str = Query(...)) -> dict:
-    """
-    Handle search queries by generating response using text model
-    
-    Args:
-        query(str): Input query in string format.
-    Returns:
-        dict: A dictionary containing response under key "result"
-    Raises:
-        Exeception: If there is an error during model response generation.
-    """
-    try:
-        context_passages = vector_db._search_and_output_query(
-        question=query, 
-        response_limit=3, 
-        json_indent=3)
-        #print(context_passages)
-        #subprocess.run(['rm', '-rf', 'file_list.txt'], check=True)
-        #vector_db._delete_database_and_collection()
-        PROMPT = f"""Use the following pieces of context to answer the question at the end.
-        If you don't know the answer, just say that you don't know, don't try to make up an answer.
-
-        Context: {' '.join(context_passages)}
-
-        Question: {query}
         """
-        response = model.model_response(message=PROMPT, skip_special_tokens=False)
-        #response = model.model_response(message=query)
-        #response = f"{query}, How are you ?"
-        return {"result": response}
-    except Exception as e:
-        logger.error(f"Error generating response: {str(e)}")
-        return {"error": "An error occurred while processing your request"}
+        Handle search queries by generating response using text model
+        
+        Args:
+            query(str): Input query in string format.
+        Returns:
+            dict: A dictionary containing response under key "result"
+        Raises:
+            Exeception: If there is an error during model response generation.
+        """
+        try:
+            question, answer = rag_pipeline.generate_response(query, skip_special_tokens=False)
+            #response = model.model_response(message=PROMPT, skip_special_tokens=False)
+            return {"result": answer}
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}")
+            return {"error": "An error occurred while processing your request"}
 
 
 if __name__=="__main__":

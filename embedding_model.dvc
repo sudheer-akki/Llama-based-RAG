@@ -1,6 +1,0 @@
-outs:
-- md5: 808f658994d21d05560d27314dcfd80e.dir
-  size: 4884071937
-  nfiles: 124
-  hash: md5
-  path: embedding_model

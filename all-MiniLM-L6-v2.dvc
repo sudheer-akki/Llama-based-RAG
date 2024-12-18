@@ -1,0 +1,6 @@
+outs:
+- md5: 53e22670b4b7b2ed382080e5beecf60c.dir
+  size: 1854281723
+  nfiles: 124
+  hash: md5
+  path: all-MiniLM-L6-v2

@@ -68,7 +68,12 @@ class TextModel:
             )
             generation_config.eos_token_id = self.tokenizer.eos_token_id
             generation_config.do_sample = self.do_sample
-            # Rest of your configuration
+            if self.do_sample:
+                # Rest of your configuration
+                generation_config.top_p = self.top_p
+                generation_config.top_k = self.top_k
+            generation_config.repetition_penalty = self.rep_penalty
+            generation_config.num_return_sequences = self.num_return_seq
             generation_config.max_new_tokens = self.max_tokens
             generation_config.temperature = self.temperature
             # ... other configurations
@@ -104,7 +109,7 @@ class TextModel:
         """
         try:
             logger.info(f"Loading tokenizer from '{os.path.basename(model_dir)}' folder.") 
-            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote =True)
+            tokenizer = AutoTokenizer.from_pretrained(model_dir, torch_dtype='auto', trust_remote =True)
             tokenizer.pad_token = tokenizer.eos_token 
         except IOError as e:
             logger.error(f"[Error] Unable to load tokenizer from {os.path.basename(model_dir)}")
@@ -114,7 +119,7 @@ class TextModel:
             #logger.info(f"Downloaded and loaded tokenizer from {model_dir} folder")
         try:
             logger.info(f"Loading model from '{os.path.basename(model_dir)}' folder")  
-            model = AutoModelForCausalLM.from_pretrained(model_dir,revision="main",trust_remote_code=True)
+            model = AutoModelForCausalLM.from_pretrained(model_dir,revision="main", torch_dtype='auto',trust_remote_code=True)
             model = model.to(self.device)
             logger.info(f"Model loaded successfully..!!!")
         except IOError as e:

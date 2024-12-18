@@ -3,11 +3,14 @@ import json
 from typing import List
 import subprocess
 from tqdm import tqdm
+import torch
+import torch.nn.functional as F
 from data_validation import TextProcess
-from langchain_core.prompts import PromptTemplate
-from langchain_huggingface import HuggingFaceEmbeddings
+from utils import mean_pooling
+#from langchain_huggingface import HuggingFaceEmbeddings
 from huggingface_hub import snapshot_download
 from pymilvus import MilvusClient, connections, MilvusException, utility, db, DataType
+from transformers import AutoTokenizer, AutoModel
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 from logging_config import setup_logger 
@@ -17,9 +20,9 @@ class GenerateEmbeddings:
     def __init__(
         self,
         device: str,
-        folder_name: str ="files",
-        embedding_model: str = "sentence-transformers/all-mpnet-base-v2",
-        model_save_path: str = "embedding_model",
+        folder_name: str,
+        embed_model_name: str,
+        embed_model_save_path: str ,
         chunk_length: int = 150, 
         overlap_length: int = 10, 
         stopwords_file: str = "stop_words.txt",
@@ -27,8 +30,9 @@ class GenerateEmbeddings:
         save_text: bool = False,
         ):
         self.save_text = save_text
-        self.model_name = embedding_model
-        self.model_save_path = model_save_path
+        self.embed_model_name = embed_model_name
+        self.embed_model_save_path = embed_model_save_path
+        self.folder_name = folder_name
         self.text_process = TextProcess(
             folder_name = folder_name, 
             stopwords_file = stopwords_file,
@@ -40,40 +44,53 @@ class GenerateEmbeddings:
         chunk_size=chunk_length,
         overlap_size=overlap_length
         )
-        self.model = self._load_embeddingsmodel(
-            saved_model=self.model_save_path,
+        self.tokenizer, self.embed_model = self._load_tokenizer_and_embedmodel(
+            embed_model_save_path=self.embed_model_save_path,
             device=device)
         #self.make_embeddings()
 
     def _download_snapshot(self):
-        logger.info(f"Downloading {self.model_name} into {self.model_save_path} folder")  
-        #model_name = "sentence-transformers/all-mpnet-base-v2"
+        logger.info(f"Downloading {self.embed_model_name} into {self.embed_model_name} folder")  
         try:
-            snapshot_download(repo_id=self.model_name,local_dir=self.model_save_path)
+            snapshot_download(repo_id=self.embed_model_name,local_dir=self.embed_model_name)
         except Exception as e:
-            logger.error(f"Error while downloading {self.model_name} into {self.model_save_path}")
-            raise Exception(f"Error while downloading {self.model_name} into {self.model_save_path}: {e}") 
-
-
-    def _load_embeddingsmodel(self, saved_model, device: str):
-        """This is a sentence-transformers model: 
-        It maps sentences & paragraphs to a 784 dimensional dense vector space and can be used 
-        for tasks like clustering or semantic search."""
-        if not os.path.exists(os.path.join(os.getcwd(),saved_model)):
-            logger.error(f"Model file {saved_model} not found")
-            #raise FileNotFoundError(f"Model file {saved_model} not found")
+            logger.error(f"Error while downloading {self.embed_model_name} into {self.embed_model_name}")
+            raise Exception(f"Error while downloading {self.embed_model_name} into {self.embed_model_name}: {e}") 
+    
+    def _load_tokenizer_and_embedmodel(self,embed_model_save_path, device: str):
+        if not os.path.exists(os.path.join(os.getcwd(),embed_model_save_path)):
+            logger.error(f"Embedding model file {embed_model_save_path} not found")
             self._download_snapshot()
         try:
-            logger.info(f"Loading embedding model from {saved_model} folder")
-            embedding_model = HuggingFaceEmbeddings(
-                cache_folder=f"./{saved_model}",
-                model_kwargs = {'device':device}, 
-                show_progress = True)
-            logger.info(f"{saved_model} loaded successfully")
+            logger.info(f"Loading '{self.embed_model_name}' from '{embed_model_save_path}' folder")
+            # Load model from HuggingFace Hub
+            tokenizer = AutoTokenizer.from_pretrained(embed_model_save_path, revision="main",trust_remote_code=True)
+            logger.info(f"Tokenizer loaded from {embed_model_save_path}")
+            model = AutoModel.from_pretrained(embed_model_save_path, revision="main",trust_remote_code=True)
+            logger.info(f"Loaded Embedding model from {embed_model_save_path}")
+            logger.info(f"Loading model to {device}")
+            model = model.to(device)
+            return tokenizer, model
         except IOError as e:
-            logger.error(f"[Error] Unable to load model from {saved_model}")
-            raise IOError(f"Error loading model from {saved_model}: {e}")
-        return embedding_model
+            logger.error(f"[Error] Unable to load model or tokenizer from {embed_model_save_path}")
+            raise IOError(f"Error loading model or tokenizer from {embed_model_save_path}: {e}")
+                    
+    
+    def _make_embedding_using_torch(self, sentences: List[str]):
+        # Tokenize sentences
+        encoded_input = self.tokenizer(sentences,
+                                       padding=True, 
+                                       truncation=True, 
+                                        return_tensors='pt')
+        # Compute token embeddings
+        with torch.no_grad():
+            model_output = self.embed_model(**encoded_input)
+        # Perform pooling
+        sentence_embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
+        # Normalize embeddings
+        sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+        return sentence_embeddings.tolist()
+    
 
     def _make_embeddings(self, query: str = None, embed_save_file: str ="embeddings.txt" ):
         """Making embeddings from chunked text"""
@@ -84,7 +101,7 @@ class GenerateEmbeddings:
                 content_to_embed = query
             elif isinstance(self.chunked_content, list) and \
                 all(isinstance(i, str) for i in self.chunked_content):
-                logger.info(f"Embedding chunked content from 'files' folder")
+                logger.info(f"Embedding chunked content from '{self.folder_name}' folder")
                 content_to_embed = self.chunked_content
             else:
                 logger.error(f"[Error] No content available to generate embeddings")
@@ -93,8 +110,7 @@ class GenerateEmbeddings:
             logger.error(f"[Error] Error in loading content for embeddings: {e}")
             raise Exception(f"[Error] Error in loading content for embeddings \
                              Provide a query or ensure chunked_content is set.: {e}")
-        # Assuming HuggingFaceEmbeddings has an `embed` method to process the chunks#
-        embeddings = self.model.embed_documents(content_to_embed)
+        embeddings = self._make_embedding_using_torch(sentences=content_to_embed)
         if self.save_text:
             logger.info(f"Saving embedded content into {embed_save_file}")
             with open(embed_save_file, "w") as f:
@@ -117,9 +133,9 @@ class GenerateEmbeddings:
 class VectorDatabase:
     def __init__(self, 
                  embed_model_loaded,
-                 db_name: str ="milvusdemo",
-                 collection_name: str="rag_collection",
-                 embed_dim: int= 768,
+                 db_name: str,
+                 collection_name: str,
+                 vector_field_dim: int,
                  host: str = "127.0.0.1",
                  port: str = "19530",
                  username: str = "root",
@@ -128,7 +144,7 @@ class VectorDatabase:
                  metric_type: str = "COSINE"):
         self.db_name = db_name
         self.collection_name = collection_name
-        self.embed_dim = embed_dim
+        self.vector_field_dim = vector_field_dim
         self.host = host
         self.port = port
         self.token = token
@@ -141,27 +157,26 @@ class VectorDatabase:
     def _initial_connection_setup(self):
         logger.info(f"Connecting to http://{self.host}:{self.port}")
         connections.connect(host=self.host,port=self.port)
+        #logger.info(f"Connected to http://{self.host}:{self.port}")
         self._setup_database_and_collection()
 
     def _connect_client(self):
         try:
-            #elf._connect_database()
             # connecting to client
-            logger.info("Connecting to Milvus Client")
+            logger.info(f"Connecting to Milvus Client {self.db_name}")
             self.client = MilvusClient(
                 uri=f"http://{self.host}:{self.port}",
                 db_name=self.db_name
             )
-            #db.create_database(self.db_name)
+            #logger.info(f"Connected to Milvus Client {self.db_name}")
             #creating schema
             self.schema = self.client.create_schema(
                 auto_id = False,
                 enable_dynamic_field=True
             )
             self.schema.add_field(field_name="id",datatype=DataType.INT64, is_primary = True, description="primary id")
-            self.schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=self.embed_dim, description="vector")
+            self.schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=self.vector_field_dim, description="vector")
             self.schema.add_field(field_name="text",datatype=DataType.VARCHAR,max_length=65535, description="text content")
-
             self.index_params = self.client.prepare_index_params()
             self.index_params.add_index(
                 field_name="id",
@@ -172,7 +187,7 @@ class VectorDatabase:
                 index_type="IVF_FLAT", #Quantization-based index; High-speed query & Requires a recall rate as high as possible
                 index_name="vector_index",
                 metric_type=self.metric_type, #inner product
-                params={ "nlist": 128 } #IVF_FLAT divides vector data into nlist cluster units; Range: [1, 65536]; default value: 128
+                params={"nlist": 128 } #IVF_FLAT divides vector data into nlist cluster units; Range: [1, 65536]; default value: 128
             )
         except Exception as ex:
             logger.error(f"[Error] Unable to connect to Milvus Client: {ex}")
@@ -209,7 +224,7 @@ class VectorDatabase:
         try:
             #databases = self.client.list_databases()
             #print("Available Databases:", databases)
-            logger.info(f"Connecting to {self.db_name}")
+            logger.info(f"Connecting to {self.db_name} Database")
             connections.connect(
                 alias=self.db_name,
                 host=self.host,
@@ -235,7 +250,7 @@ class VectorDatabase:
         #self._connect_database()
         try:
             if not self.client.has_collection(collection_name=self.collection_name):
-                logger.info(f"Creating collection: {self.collection_name}")
+                logger.info(f"Creating collection: {self.collection_name};vector dimension: {self.vector_field_dim}")
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     schema=self.schema,
@@ -306,8 +321,11 @@ class VectorDatabase:
     def _get_retrieved_info(self, json_indent: int, search_res: str):
         """Retrieving user query from Milvus DB"""
         try:
-            retrieved_lines_with_distances = [
+            """retrieved_lines_with_distances = [
                 (res["entity"]["text"], res["distance"]) for res in search_res[0]
+                ]"""
+            retrieved_lines_with_distances = [
+                (res["entity"]["text"]) for res in search_res[0]
                 ]
             return json.dumps(retrieved_lines_with_distances, indent=json_indent)
         except MilvusException as e:

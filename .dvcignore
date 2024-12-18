@@ -49,6 +49,8 @@ config.local.yaml
 # Local folders to ignore
 logs/
 text_model/
+embedding_model/
+terraform/
 volumes/
 *.py
 *.md

@@ -3,12 +3,13 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 from huggingface_hub import snapshot_download
 from typing import Tuple
+from langdetect import detect
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 
 class TextModel:
     #@ensure_annotations
-    def __init__(self, model_name:str, model_dir:str,max_tokens:int = 1024, device: str = "cuda", temperature:float = 0.2, top_p:float = 0.6,\
+    def __init__(self, model_name:str, model_dir:str,max_token:int = 1024, device: str = "cuda", temperature:float = 0.2, top_p:float = 0.6,\
                  top_k:int = None, num_return_seq:int = 2, rep_penalty:float = 2.5, do_sample:bool = True, \
                  ):
         """
@@ -29,7 +30,7 @@ class TextModel:
         logger.info(f"Device: {device}")
         self.device = device
         #User-defined generation configuration
-        self.max_tokens = max_tokens
+        self.max_token = max_token
         self.temperature = temperature
         self.top_p = top_p
         self.top_k = top_k
@@ -39,7 +40,6 @@ class TextModel:
         #self.model_name = model_name
         self.tokenizer, self.model = self._download_and_load_model(model_name=model_name,save_dir=model_dir)
         #Load and configure the generation config
-        #self.generation_config = GenerationConfig()
         self.generation_config = self._load_default_config() # Applying default or user configuration
       
     
@@ -74,7 +74,7 @@ class TextModel:
                 generation_config.top_k = self.top_k
             generation_config.repetition_penalty = self.rep_penalty
             generation_config.num_return_sequences = self.num_return_seq
-            generation_config.max_new_tokens = self.max_tokens
+            generation_config.max_new_tokens = self.max_token
             generation_config.temperature = self.temperature
             # ... other configurations
             return generation_config
@@ -152,6 +152,7 @@ class TextModel:
         """
         #if not isinstance(message, str):
         #    raise TypeError(f"Input message is not a string...!!!")
+
         encoding = self.tokenizer(message.strip(), return_tensors="pt").to(self.device)
         with torch.inference_mode():
             outputs = self.model.generate(

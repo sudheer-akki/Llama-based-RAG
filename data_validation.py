@@ -1,5 +1,4 @@
 from data_collection import DataCollect
-#from langchain_text_splitters import RecursiveCharacterTextSplitter
 import re
 from nltk.tokenize import word_tokenize
 from logging_config import setup_logger 
@@ -12,7 +11,8 @@ class TextProcess:
         folder_name: str,
         stopwords_file: str = "stop_words.txt",
         remove_stop_words: bool = False,
-        save_text: bool = False
+        save_text: bool = False,
+        upload_data: bool = False
         ):
         self.save_text = save_text
         self.remove_stop_words = remove_stop_words

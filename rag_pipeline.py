@@ -1,50 +1,18 @@
-import os
-import torch
 from dotenv import load_dotenv
+from langdetect import detect
+from config import Config
 
 # Local module imports
 from vector_embedding import VectorDatabase, GenerateEmbeddings
 from llm_model import TextModel
 from utils import filter_response, PROMPT
 from logging_config import setup_logger
-
+config_manager = Config()
 # Load environment variables
 load_dotenv()
 
-# Configuration constants
-class Config:
-    MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B")
-    MODEL_DIR = os.getenv("MODEL_DIR", "Llama-3.2-1B")
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Embedding model configuration
-    EMBEDDING_CONFIG = {
-        "embed_model_name": "sentence-transformers/all-MiniLM-L6-v2",
-        "folder_name": "files",
-        "embed_model_save_path": "all-MiniLM-L6-v2",
-        "stopwords_file": "stop_words.txt",
-        "device": "cpu",
-        "remove_stop_words": False,
-        "save_text": False,
-        "chunk_length": 200,
-        "overlap_length": 20
-    }
-
-    # Vector DB configuration
-    VECTOR_DB_CONFIG = {
-        "db_name": "rag_demo",
-        "collection_name": "rag_collection",
-        "vector_field_dim": 384,
-        "host": "127.0.0.1",
-        "port": "19530",
-        "username": "root",
-        "password": "Milvus",
-        "token": "root:Milvus",
-        "metric_type": "COSINE"
-    }
-
 class RAGPipeline:
-    def __init__(self, config=Config, rag_response_limit: int = 5,upload_data: bool = False):
+    def __init__(self, vector_db):
         """
         Initialize the RAG (Retrieval-Augmented Generation) Pipeline
         
@@ -52,8 +20,11 @@ class RAGPipeline:
             config (class): Configuration class with pipeline settings
         """
         self.logger = setup_logger(pkgname="rag_database")
-        self.config = config
-        self.response_limit = rag_response_limit
+        #vector Database intialized
+        self.vector_db = vector_db
+        self.config = config_manager
+        self.upload_data = self.config.config.EMBEDDING_CONFIG.upload_data
+        self.response_limit = self.config.config.VECTOR_DB_CONFIG.response_limit
 
         # Initialize embedding generator
         try:
@@ -62,23 +33,9 @@ class RAGPipeline:
             self.logger.error(f"Embedding generator initialization failed: {e}")
             raise
 
-        # Initialize vector database
-        try:
-            self.vector_db = self._initialize_vector_database()
-        except Exception as e:
-            self.logger.error(f"Vector database initialization failed: {e}")
-            raise
-
-        # Initialize language model
-        try:
-            self.model = self._initialize_text_model()
-        except Exception as e:
-            self.logger.error(f"Language model initialization failed: {e}")
-            raise
-
         # Insert data into Vector Database
         try:
-            if upload_data:
+            if self.upload_data:
                 self.logger.info("[IMPORTANT] Uploading data into Vector DB")
                 self._insert_data_db()
             else:
@@ -87,7 +44,6 @@ class RAGPipeline:
             self.logger.error(f"Data insertion failed: {e}")
             raise
 
-
     def _initialize_embedding_generator(self):
         """
         Initialize embedding generator with predefined configurations
@@ -95,7 +51,72 @@ class RAGPipeline:
         Returns:
             GenerateEmbeddings: Configured embedding generator
         """
-        return GenerateEmbeddings(**self.config.EMBEDDING_CONFIG)
+        return GenerateEmbeddings(**self.config.config.EMBEDDING_CONFIG)
+
+    def _insert_data_db(self):
+        data,_ = self.gen_embedding._make_embeddings()
+        return self.vector_db._insert_data(data=data)
+    
+    def retrieve_context(self, query, json_indent: int = 3):
+        """
+        Retrieve context for a given query
+        
+        Args:
+            query (str): Input query
+            response_limit (int, optional): Number of context passages. Defaults to 5.
+        
+        Returns:
+            list: Retrieved context passages
+        """
+        try:
+            _, query_embeddings = self.gen_embedding._make_embeddings(query=query)
+            return self.vector_db._search_and_output_query(
+                query_embeddings= query_embeddings,
+                json_indent=json_indent
+            )
+        except Exception as e:
+            self.logger.error(f"Context retrieval error: {e}")
+            raise
+    
+    
+class TextModelPipeline:
+    def __init__(self):
+        """
+        Initialize the Text Generation Model Pipeline
+        
+        Args:
+            config (class): Configuration class with pipeline settings
+        """
+        self.logger = setup_logger(pkgname="rag_database")
+        self.config = config_manager
+        # Initialize vector database
+        try:
+            self.vector_db = self._initialize_vector_database()
+        except Exception as e:
+            self.logger.error(f"Vector database initialization failed: {e}")
+            raise
+
+        try:
+            self.rag_pipeline = RAGPipeline(vector_db=self.vector_db)
+        except Exception as e:
+            self.logger.error(f"RAG pipeline initialization failed: {e}")
+            raise
+
+        # Initialize language model
+        try:
+            self.model = self._initialize_text_model()
+        except Exception as e:
+            self.logger.error(f"Text model initialization failed: {e}")
+            raise
+
+    def _initialize_text_model(self):
+        """
+        Initialize language model with predefined configurations
+        
+        Returns:
+            TextModel: Configured language model
+        """
+        return TextModel(**self.config.config.TEXT_MODEL_CONFIG)
     
     def _initialize_vector_database(self):
         """
@@ -105,33 +126,9 @@ class RAGPipeline:
             VectorDatabase: Configured vector database
         """
         vector_db = VectorDatabase(
-            embed_model_loaded=self.gen_embedding,
-            **self.config.VECTOR_DB_CONFIG
+            **self.config.config.VECTOR_DB_CONFIG
         )
         return vector_db
-    
-    def _initialize_text_model(self):
-        """
-        Initialize language model with predefined configurations
-        
-        Returns:
-            TextModel: Configured language model
-        """
-        return TextModel(
-            model_name=self.config.MODEL_NAME,
-            model_dir=self.config.MODEL_DIR,
-            device=self.config.DEVICE,
-            max_tokens=1024,
-            temperature=0.1,
-            top_p=0.6,
-            top_k=None,
-            num_return_seq=1,
-            rep_penalty=2.5,
-            do_sample=True
-        )
-    
-    def _insert_data_db(self):
-        return self.vector_db._insert_data()
     
     @staticmethod
     def clean_context(context_passages):
@@ -149,28 +146,7 @@ class RAGPipeline:
             for passage in context_passages
         ])
     
-    def retrieve_context(self, query, json_indent: int = 3):
-        """
-        Retrieve context for a given query
-        
-        Args:
-            query (str): Input query
-            response_limit (int, optional): Number of context passages. Defaults to 5.
-        
-        Returns:
-            list: Retrieved context passages
-        """
-        try:
-            return self.vector_db._search_and_output_query(
-                question=query,
-                response_limit=self.response_limit,
-                json_indent=json_indent
-            )
-        except Exception as e:
-            self.logger.error(f"Context retrieval error: {e}")
-            raise
-
-    def generate_response(self, query: str, skip_special_tokens= False) -> tuple[str]:
+    def generate_response(self, query: str, skip_special_tokens= False, max_retries=3) -> tuple[str]:
         """
         Generate response for a given query
         
@@ -182,7 +158,7 @@ class RAGPipeline:
         """
         try:
             # Retrieve context
-            context_passages = self.retrieve_context(query)
+            context_passages = self.rag_pipeline.retrieve_context(query=query) #self.retrieve_context(query)
             
             # Prepare prompt
             formatted_prompt = PROMPT.format(
@@ -190,21 +166,25 @@ class RAGPipeline:
                 Context=self.clean_context(context_passages),
                 query=query
             )
-            
+            retries = 0
             # Generate response
-            response = self.model.model_response(
-                message=formatted_prompt, 
-                skip_special_tokens=skip_special_tokens
-            )
+            response = self.model.model_response(message=formatted_prompt, 
+                skip_special_tokens=skip_special_tokens)
             
+            # Check language and retry if it's not English
+            while detect(response) != 'en' and retries < max_retries:
+                retries += 1
+                self.logger.info(f"Response not in English. Retry {retries}/{max_retries}.")
+                response = self.model.model_response(message=formatted_prompt, skip_special_tokens=skip_special_tokens)
+            if retries == max_retries and detect(response) != 'en':
+                self.logger.info(f"Max retries reached. Returning non-English response.")
             # Filter response
             question, answer = filter_response(output_response=response)
-            
             return question, answer
-        
         except Exception as e:
             self.logger.error(f"Response generation error: {e}")
             raise
+
 
 def main():
     """
@@ -212,13 +192,13 @@ def main():
     """
     try:
         # Initialize pipeline
-        rag_pipeline = RAGPipeline(upload_data = False)
+        Textmodel = TextModelPipeline(rag_response_limit=5, max_token=1024, upload_data=True)
         
         # Example query
-        query = "what is Glu-net model and how it works?"
+        query = "what is Llama model and how it works ?"
         
         # Generate and print response
-        question, answer = rag_pipeline.generate_response(query)
+        question, answer = Textmodel.generate_response(query=query)
         
         print("Question:", question)
         print("Answer:", answer)

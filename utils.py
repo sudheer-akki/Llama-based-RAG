@@ -15,6 +15,8 @@ def filter_response(output_response):
         answer = answer_match.group(1).strip()
     return query, answer
 
+
+
 PROMPT = """
     You are a helpful AI assistant. Your name is {name}.
     Given the context information below I want you to think step by step to answer the query in a crisp manner, incase case you don't know the answer say 'I don't know!.

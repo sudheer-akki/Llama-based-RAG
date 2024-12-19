@@ -7,14 +7,15 @@ import torch
 import torch.nn.functional as F
 from data_validation import TextProcess
 from utils import mean_pooling
-#from langchain_huggingface import HuggingFaceEmbeddings
 from huggingface_hub import snapshot_download
-from pymilvus import MilvusClient, connections, MilvusException, utility, db, DataType
+from pymilvus import MilvusClient, MilvusException, utility, db, DataType
 from transformers import AutoTokenizer, AutoModel
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
+from dotenv import load_dotenv
+load_dotenv()
 
 class GenerateEmbeddings:
     def __init__(
@@ -23,8 +24,9 @@ class GenerateEmbeddings:
         folder_name: str,
         embed_model_name: str,
         embed_model_save_path: str ,
-        chunk_length: int = 150, 
-        overlap_length: int = 10, 
+        upload_data: bool,
+        chunk_length: int = 200, 
+        overlap_length: int = 20, 
         stopwords_file: str = "stop_words.txt",
         remove_stop_words: bool = False,
         save_text: bool = False,
@@ -33,17 +35,19 @@ class GenerateEmbeddings:
         self.embed_model_name = embed_model_name
         self.embed_model_save_path = embed_model_save_path
         self.folder_name = folder_name
-        self.text_process = TextProcess(
-            folder_name = folder_name, 
-            stopwords_file = stopwords_file,
-            remove_stop_words = remove_stop_words,
-            save_text=save_text
-        )
-        self.chunked_content = \
-        self.text_process._clean_and_chunk_content(
-        chunk_size=chunk_length,
-        overlap_size=overlap_length
-        )
+        self.upload_data = upload_data
+        if upload_data:
+            self.text_process = TextProcess(
+                folder_name = folder_name, 
+                stopwords_file = stopwords_file,
+                remove_stop_words = remove_stop_words,
+                save_text=save_text
+            )
+            self.chunked_content = \
+            self.text_process._clean_and_chunk_content(
+            chunk_size=chunk_length,
+            overlap_size=overlap_length
+            )
         self.tokenizer, self.embed_model = self._load_tokenizer_and_embedmodel(
             embed_model_save_path=self.embed_model_save_path,
             device=device)
@@ -109,15 +113,16 @@ class GenerateEmbeddings:
         except Exception as e:
             logger.error(f"[Error] Error in loading content for embeddings: {e}")
             raise Exception(f"[Error] Error in loading content for embeddings \
-                             Provide a query or ensure chunked_content is set.: {e}")
-        embeddings = self._make_embedding_using_torch(sentences=content_to_embed)
-        if self.save_text:
-            logger.info(f"Saving embedded content into {embed_save_file}")
-            with open(embed_save_file, "w") as f:
-                for embed in embeddings:
-                    f.write(str(embed))
-            logger.info(f"Saved embedded content into {embed_save_file} successfully")
-        if embeddings:
+                           Provide a query or ensure chunked_content is set.: {e}")
+        embeddings = None
+        if content_to_embed:
+            embeddings = self._make_embedding_using_torch(sentences=content_to_embed)
+            if self.save_text:
+                logger.info(f"Saving embedded content into {embed_save_file}")
+                with open(embed_save_file, "w") as f:
+                    for embed in embeddings:
+                        f.write(str(embed))
+                logger.info(f"Saved embedded content into {embed_save_file} successfully")
             data = [
                 {"id": i, "vector": embeddings[i], "text": content_to_embed[i]}
                 for i in tqdm(range(len(embeddings)), desc="Creating embeddings")
@@ -128,47 +133,45 @@ class GenerateEmbeddings:
             logger.error("[Error] Embeddings list is empty. No data created.")
             data = [{"id": None, "vector": None, "text": None}]
         return data, embeddings
+            
     
 
 class VectorDatabase:
     def __init__(self, 
-                 embed_model_loaded,
-                 db_name: str,
-                 collection_name: str,
-                 vector_field_dim: int,
-                 host: str = "127.0.0.1",
-                 port: str = "19530",
-                 username: str = "root",
-                 password: str = "Milvus",
-                 token: str = "root:Milvus",
-                 metric_type: str = "COSINE"):
+                Zilliz_CLUSTER_USER,
+                Zilliz_CLUSTER_PWD,
+                TOKEN,
+                URI,
+                response_limit,
+                db_name: str ="rag_demo",
+                collection_name: str="rag_collection",
+                vector_field_dim: int= 768,
+                metric_type: str = "COSINE"):
         self.db_name = db_name
         self.collection_name = collection_name
         self.vector_field_dim = vector_field_dim
-        self.host = host
-        self.port = port
-        self.token = token
-        self.username = username
-        self.password = password
+        self.Zilliz_CLUSTER_USER = Zilliz_CLUSTER_USER
+        self.Zilliz_CLUSTER_PWD = Zilliz_CLUSTER_PWD
+        self.TOKEN = TOKEN
+        self.URI = URI
         self.metric_type = metric_type
-        self.gen_embedding = embed_model_loaded
+        self.response_limit = response_limit
+        #self.gen_embedding = embed_model_loaded
         self._initial_connection_setup()
 
     def _initial_connection_setup(self):
-        logger.info(f"Connecting to http://{self.host}:{self.port}")
-        connections.connect(host=self.host,port=self.port)
-        #logger.info(f"Connected to http://{self.host}:{self.port}")
-        self._setup_database_and_collection()
+        self._connect_client()
+        logger.info(f"Connected to {self.URI}")
+        self._create_collection()
 
     def _connect_client(self):
         try:
             # connecting to client
-            logger.info(f"Connecting to Milvus Client {self.db_name}")
+            logger.info(f"Connecting to {self.URI}")
             self.client = MilvusClient(
-                uri=f"http://{self.host}:{self.port}",
-                db_name=self.db_name
+                uri=self.URI,
+                token=f"{self.Zilliz_CLUSTER_USER}:{self.Zilliz_CLUSTER_PWD}",
             )
-            #logger.info(f"Connected to Milvus Client {self.db_name}")
             #creating schema
             self.schema = self.client.create_schema(
                 auto_id = False,
@@ -192,48 +195,6 @@ class VectorDatabase:
         except Exception as ex:
             logger.error(f"[Error] Unable to connect to Milvus Client: {ex}")
             raise Exception(f"[Error] Unable to connect to Milvus Client: {ex}")
-
-    def _setup_database_and_collection(self):
-        """Consolidated method to set up database"""
-        logger.info(f"Checking Database: {self.db_name}")
-        try:
-            #self._connect_database()
-            #connecting to database
-            # Check if database exists and create if not
-            existing_dbs = db.list_database()
-            logger.info(f"[Before] Existing Database: {existing_dbs}")
-            if self.db_name not in existing_dbs:
-                logger.info(f"Creating Database: {self.db_name}")
-                db.create_database(self.db_name)
-            else:
-                logger.info(f"Loading pre-existed database: {self.db_name}")
-                # Switch to the database
-                db.using_database(self.db_name)
-            logger.info(f"[After] Existing Database: {db.list_database()}")
-
-        except MilvusException as e:
-            logger.info(f"[Error] Database connection failed :{e}")
-            raise Exception(f"[Error] Database connection failed :{e}")
-        self._connect_client()
-        # Create collection and insert data
-        self._create_collection()
-
-    def _connect_database(self):
-        """Establish connection to the database"""
-        logger.info(f"Establishing database connection...!!!")
-        try:
-            #databases = self.client.list_databases()
-            #print("Available Databases:", databases)
-            logger.info(f"Connecting to {self.db_name} Database")
-            connections.connect(
-                alias=self.db_name,
-                host=self.host,
-                port=self.port
-            )
-            logger.info(f"{self.db_name} connection has established successfully")
-        except MilvusException as e:
-            logger.error(f"Unable to connect to Database: {e}")
-            raise Exception(f"[Error] Unable to connect to Database: {e}")
     
     def _listout_collections(self):
         """List all collections in the database"""
@@ -250,30 +211,24 @@ class VectorDatabase:
         #self._connect_database()
         try:
             if not self.client.has_collection(collection_name=self.collection_name):
-                logger.info(f"Creating collection: {self.collection_name};vector dimension: {self.vector_field_dim}")
+                logger.info(f"Creating collection: {self.collection_name}; vector dimension: {self.vector_field_dim}")
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     schema=self.schema,
-                    index_params=self.index_params,
-                    using=self.db_name,
-                    # highlight-next
                     consistency_level="Strong",
                 )
                 res = self.client.get_load_state(
                 collection_name=self.collection_name)
                 logger.info(f"{self.collection_name} is ready: {res}")
-            self._listout_collections()
-            # Insert data
-            #self._insert_data()
         except MilvusException as e:
             raise Exception(f"[Error] Failed to create {self.collection_name}:{e}")
 
 
-    def _insert_data(self):
+    def _insert_data(self, data):
         """Inserting data into collection"""
         logger.info("Inserting embedded data into Milvus server")
         try:
-            data,_ = self.gen_embedding._make_embeddings()
+            #data,_ = embed_model._make_embeddings()
             # Check if data is valid for insertion
             if data and any(item["id"] is not None for item in data):
                 self.client.insert(
@@ -288,7 +243,7 @@ class VectorDatabase:
             raise Exception(f"[Error] Unable to insert data to Milvus: {ex}")
         
       
-    def _search_and_output_query(self, question: str, json_indent:int, response_limit: int):
+    def _search_and_output_query(self, query_embeddings: List, json_indent:int):
         """Generates Embeddings and returns retrieved data
         Args:
             question (str): User Query
@@ -299,7 +254,7 @@ class VectorDatabase:
         """
         try:
             logger.info(f"Creating embeddings for the User Query")
-            _, query_embeddings = self.gen_embedding._make_embeddings(query=question)
+            #_, query_embeddings = self.gen_embedding._make_embeddings(query=question)
             print(f"Embedding sample: {query_embeddings[0][:5]}")
             logger.info(f"User query embedding dim : {len(query_embeddings[0])}")
             logger.info(f"[Important] using: {self.metric_type} metric type")
@@ -307,7 +262,7 @@ class VectorDatabase:
             collection_name=self.collection_name,
             anns_field="vector",
             data=[query_embeddings[0]],  
-            limit=response_limit,  # Return top 3 results
+            limit=self.response_limit,  # Return top 5 results
             search_params={"metric_type": self.metric_type,  "params": {}},  # Inner product distance
             output_fields=["text"],  # Return the text field
             )
@@ -321,12 +276,9 @@ class VectorDatabase:
     def _get_retrieved_info(self, json_indent: int, search_res: str):
         """Retrieving user query from Milvus DB"""
         try:
-            """retrieved_lines_with_distances = [
-                (res["entity"]["text"], res["distance"]) for res in search_res[0]
-                ]"""
             retrieved_lines_with_distances = [
                 (res["entity"]["text"]) for res in search_res[0]
-                ]
+            ]
             return json.dumps(retrieved_lines_with_distances, indent=json_indent)
         except MilvusException as e:
             logger.error(f"[Error] Unable to output query results: {e}")

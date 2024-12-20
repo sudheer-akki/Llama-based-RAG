@@ -1,10 +1,14 @@
 fastapi==0.115.6
 huggingface_hub==0.26.5
+langdetect==1.0.9
 nltk==3.8.1
+pdfplumber==0.11.4
 pymilvus==2.5.0
-pypdf==5.1.0
 python-dotenv==1.0.1
+python_box==6.0.2
 torch==2.5.1
 torch_xla==2.5.1
 tqdm==4.67.1
 transformers==4.47.0
+uvicorn==0.34.0
+watchfiles==1.0.3

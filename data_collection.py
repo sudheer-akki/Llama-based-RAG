@@ -1,6 +1,8 @@
 import os
 from typing import List
-from pypdf import PdfReader
+import re
+#from pypdf import PdfReader
+import pdfplumber
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
 
@@ -37,10 +39,10 @@ class DataCollect:
             try:
                 if file_path.endswith('.pdf'):
                     text = self.load_pdf(file_path)
-                    text_content+= text
+                    text_content+= text + "\n"
                 elif file_path.endswith('.txt'):
                     text = self.load_txt(file_path)
-                    text_content+= text
+                    text_content+= text + "\n"
                 if save_text:
                     self.save_text(text_content=text_content)
                 logger.info(f"Content loaded successfully")
@@ -50,23 +52,31 @@ class DataCollect:
             logger.error("[Error] No text content loaded from files. Ensure the files contain valid text.")
             #raise ValueError("No text content loaded from files. Ensure the files contain valid text.")
         return text_content
-            
+
+    def clean_references(self,text):
+        # Regular expression to match "references" and everything after it, including "References"
+        reference_pattern = r'references.*'
+        cleaned_text = re.sub(reference_pattern, '', text, flags=re.DOTALL)
+        return cleaned_text     
 
     def load_pdf(self, file_path):
         logger.info(f"Extracting content from {os.path.basename(file_path)}")
+
         try:
             if not os.path.exists(file_path):
                 logger.error(f"{file_path} not found")
                 raise FileNotFoundError(f"{file_path} not found")
-            reader = PdfReader(file_path)
+            #reader = PdfReader(file_path)
+            reader = pdfplumber.open(file_path)
             #reader = PyPDFium2Loader(file_path)
             text = ""
             #for page in reader.load():
             #    print("langchain", page)
             for page in reader.pages:
-                page_text = page.extract_text()
+                page_text = page.extract_text().lower()
                 if page_text:
-                    text += page_text + "\n"
+                    cleaned_page_text = self.clean_references(page_text)
+                    text += cleaned_page_text + "\n"
                 #text += page.extract_text() + "\n"
             return text
         except Exception as e:

@@ -5,7 +5,7 @@
   * Maps sentences & paragraphs to **384** dimensional vector space
   * By default, input text longer than **256** word pieces is truncated. 
   * **Model Size:** 22.7 M ; **Tensor Type:** Float 32
-* **Llama-3.2-1B (text only)** - Text generation based on RAG search results
+* **Llama-3.2-1B-Instruct** - Text generation based on RAG search results
   * Input modalities: Multilingual Text
   * Output modalities: Multilingual Text and code
   * Model size: **1.24B** ;Tensor Type: **BF16**; Context length: **128k**; Token count: **up to 9T**

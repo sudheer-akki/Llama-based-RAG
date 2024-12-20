@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
         watch_task.cancel()  # Stop the file watcher
         await watch_task  # Wait for it to finish
     except asyncio.CancelledError:
-        logger.error(f"Error during shutdown: {e}")
+        logger.error(f"Error during shutdown")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -158,7 +158,7 @@ async def get_response(
                 raise ValueError("Text model not initialized")
             
             question, answer = components.text_model.generate_response(
-                query=query,
+                Query=query,
                 skip_special_tokens=False
             )
             return {"result": answer}
@@ -174,7 +174,7 @@ if __name__ == "__main__":
         host=os.getenv("HOST", "localhost"),
         port=int(os.getenv("PORT", 2000)),
         reload_includes=["config.py"],
-        reload=False
+        reload=True
     )
  
  

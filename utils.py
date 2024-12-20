@@ -8,21 +8,25 @@ def mean_pooling(model_output, attention_mask):
 
 
 def filter_response(output_response):
-    query_match = re.search(r'Query: (.*?)\n', output_response)
-    answer_match = re.search(r'Answer:(.*)', output_response, re.DOTALL)
+    query_match = re.search(r'QUERY:(.*?)\n', output_response)
+    answer_match = re.search(r'ANSWER:(.*)', output_response, re.DOTALL)
     if query_match and answer_match:
         query = query_match.group(1).strip()
         answer = answer_match.group(1).strip()
-    return query, answer
+        return query, answer
+    return None, None
 
 
 
 PROMPT = """
-    You are a helpful AI assistant. Your name is {name}.
-    Given the context information below I want you to think step by step to answer the query in a crisp manner, incase case you don't know the answer say 'I don't know!.
-    ---------------------
-    Context: {Context}
-    ---------------------
-    Query: {query}
-    Answer:
+    You are a knowledgeable AI assistant focused on providing accurate information based on the given context. 
+    CONTEXT: {context}
+
+    QUERY: {query}
+    Instructions:
+    1. Only use information present in the context
+    2. If the context lacks sufficient information, respond with "Based on the provided context, I cannot answer this question."
+    3. Focus on semantic understanding rather than keyword matching
+
+    ANSWER:
     """

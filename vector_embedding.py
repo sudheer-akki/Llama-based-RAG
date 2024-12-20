@@ -36,7 +36,9 @@ class GenerateEmbeddings:
         self.embed_model_save_path = embed_model_save_path
         self.folder_name = folder_name
         self.upload_data = upload_data
-        if upload_data:
+        self.device = device
+        if self.upload_data:
+            #print("upload_data", self.upload_data)
             self.text_process = TextProcess(
                 folder_name = folder_name, 
                 stopwords_file = stopwords_file,
@@ -80,29 +82,51 @@ class GenerateEmbeddings:
             raise IOError(f"Error loading model or tokenizer from {embed_model_save_path}: {e}")
                     
     
-    def _make_embedding_using_torch(self, sentences: List[str]):
-        # Tokenize sentences
-        encoded_input = self.tokenizer(sentences,
-                                       padding=True, 
-                                       truncation=True, 
+    def _make_embedding_using_torch(self, sentences: List[str], batch_size=16):
+        """
+        Generate embeddings for large text content in batches to manage memory
+        
+        Args:
+            sentences (List[str]): List of sentences to embed
+            batch_size (int): Number of sentences to process at once
+            
+        Returns:
+            torch.Tensor: Matrix of embeddings for all sentences
+        """
+        # Create empty list to store embeddings
+        all_embeddings = []
+        #Process in batches
+        for i in tqdm(range(0, len(sentences), batch_size),desc="Generating embeddings"):
+            batch = sentences[i:i + batch_size]
+
+            # Tokenize sentences
+            encoded_input = self.tokenizer(batch,
+                                        padding=True, 
+                                        truncation=True, 
                                         return_tensors='pt')
-        # Compute token embeddings
-        with torch.no_grad():
-            model_output = self.embed_model(**encoded_input)
-        # Perform pooling
-        sentence_embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
-        # Normalize embeddings
-        sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
-        return sentence_embeddings.tolist()
+            encoded_input = encoded_input.to(self.device)
+            # Compute token embeddings
+            with torch.no_grad():
+                model_output = self.embed_model(**encoded_input)
+            # Perform pooling
+            sentence_embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
+            # Normalize embeddings
+            sentence_embeddings = F.normalize(sentence_embeddings, p=2, dim=1)
+            batch_embeddings = sentence_embeddings.cpu().numpy().tolist()
+            all_embeddings.extend(batch_embeddings)
+            # Clear GPU cache if using CUDA
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        return all_embeddings
     
 
-    def _make_embeddings(self, query: str = None, embed_save_file: str ="embeddings.txt" ):
+    def _make_embeddings(self, Query: str = None, embed_save_file: str ="embeddings.txt" ):
         """Making embeddings from chunked text"""
         logger.info("Generating embeddings from chunked data")
         try:
-            if query:
+            if Query:
                 logger.info("Embedding user query")
-                content_to_embed = query
+                content_to_embed = Query
             elif isinstance(self.chunked_content, list) and \
                 all(isinstance(i, str) for i in self.chunked_content):
                 logger.info(f"Embedding chunked content from '{self.folder_name}' folder")
@@ -116,7 +140,8 @@ class GenerateEmbeddings:
                            Provide a query or ensure chunked_content is set.: {e}")
         embeddings = None
         if content_to_embed:
-            embeddings = self._make_embedding_using_torch(sentences=content_to_embed)
+            embeddings = self._make_embedding_using_torch(sentences=content_to_embed, batch_size=32)
+            #print("embeddings",embeddings)
             if self.save_text:
                 logger.info(f"Saving embedded content into {embed_save_file}")
                 with open(embed_save_file, "w") as f:
@@ -125,7 +150,7 @@ class GenerateEmbeddings:
                 logger.info(f"Saved embedded content into {embed_save_file} successfully")
             data = [
                 {"id": i, "vector": embeddings[i], "text": content_to_embed[i]}
-                for i in tqdm(range(len(embeddings)), desc="Creating embeddings")
+                for i in tqdm(range(len(embeddings)), desc="Preparing data")
             ]
             logger.info(f"Data has {len(data)} entities, each with fields: {list(data[0].keys())}")
             logger.info(f"Vector dim: {len(data[0]['vector']) if data[0]['vector'] else 'N/A'}")
@@ -206,7 +231,7 @@ class VectorDatabase:
             raise Exception(f"Failed to list collections: {e}")
 
     def _create_collection(self):
-        """checking and creating collection if not exist"""
+        """Create new collection or load existing one"""
         #self._listout_collections()
         #self._connect_database()
         try:
@@ -217,11 +242,35 @@ class VectorDatabase:
                     schema=self.schema,
                     consistency_level="Strong",
                 )
-                res = self.client.get_load_state(
-                collection_name=self.collection_name)
-                logger.info(f"{self.collection_name} is ready: {res}")
+                # Create index for new collection
+                self.client.create_index(
+                    collection_name=self.collection_name,
+                    index_params=self.index_params
+                )
+                logger.info(f"Loading {self.collection_name} collection...!!!")
+                self.client.load_collection(
+                    collection_name=self.collection_name,
+                    replica_number=1  # Adjust based on your needs
+                )
+                # 
+            else:
+                logger.info(f"Collection {self.collection_name} already exists. Loading it...!!!")
+                # Load the collection (whether new or existing)
+                self.client.load_collection(
+                    collection_name=self.collection_name,
+                    replica_number=1  # Adjust based on your needs
+                )
+                # Wait for collection to be loaded
+                load_state = self.client.get_load_state(
+                    collection_name=self.collection_name,
+                    partition_name="",
+                    timeout=None
+                ) # Use default timeout
+                logger.info(f"Load state: {load_state}")
+                if not load_state:
+                    raise Exception(f"Collection {self.collection_name} failed to load - empty state returned")
         except MilvusException as e:
-            raise Exception(f"[Error] Failed to create {self.collection_name}:{e}")
+            raise Exception(f"[Error] Failed to create/load {self.collection_name}:{e}")
 
 
     def _insert_data(self, data):

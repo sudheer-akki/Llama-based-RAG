@@ -11,8 +11,7 @@ class TextProcess:
         folder_name: str,
         stopwords_file: str = "stop_words.txt",
         remove_stop_words: bool = False,
-        save_text: bool = False,
-        upload_data: bool = False
+        save_text: bool = False
         ):
         self.save_text = save_text
         self.remove_stop_words = remove_stop_words
@@ -39,7 +38,7 @@ class TextProcess:
             # Clean each line: remove leading numbers and strip whitespace
             logger.info(f"Cleaning extracted text")
             cleaned_lines = [
-                re.sub(r'^\d+\.\s*', '', line).strip()
+                re.sub(r'^\d+\.\s*', '', line) #.strip()
                 for line in self.extracted_text.splitlines() if line.strip()
             ]
             # Join cleaned lines back into a single string
@@ -73,8 +72,8 @@ class TextProcess:
         text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', '', content)
         # Remove distracting single quotes
         text = re.sub("\'", '', text)
-        # Remove references like [30], [1], etc
-        text = re.sub(r'\[\d+\]', '', text)
+        # Remove references like [30], [1], [14, 18]
+        text = re.sub(r'\[\d+(?:,\s*\d+)*\]', '', text)
         # Remove enumerations like (i), (ii), (iii), (1), (a), (b), etc.
         text = re.sub(r'\([A-Za-z0-9]+\)', '', text)
         # Remove citations like (Smith et al., 2020)
@@ -94,14 +93,12 @@ class TextProcess:
         text = re.sub(r'[^\w\s]', '', text)
         # Replace hyphens with no space, unless part of a compound word (e.g., high-quality)
         text = re.sub(r'(?<!\w)-|-(?!\w)', '', text)
-        # Remove patterns like [14, 18] including numbers
-        text = re.sub(r'\[\d+(?:,\s*\d+)*\]', '', text)
         #text = re.sub(r'\[\d+,\s*\d+\]', '', text)
         # Remove multiple spaces, newlines, or special characters if needed
         text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces/newlines with a single space
-        text = text.lower()
+        text = text.lower().strip()
         logger.info(f"Further cleaning completed")       
-        return text.strip()
+        return text
     
     def _remove_stopwords(self, text, stopword_file: str) -> str:
         try:

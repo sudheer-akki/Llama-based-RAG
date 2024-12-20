@@ -57,7 +57,7 @@ class RAGPipeline:
         data,_ = self.gen_embedding._make_embeddings()
         return self.vector_db._insert_data(data=data)
     
-    def retrieve_context(self, query, json_indent: int = 3):
+    def retrieve_context(self, Query, json_indent: int = 3):
         """
         Retrieve context for a given query
         
@@ -69,7 +69,7 @@ class RAGPipeline:
             list: Retrieved context passages
         """
         try:
-            _, query_embeddings = self.gen_embedding._make_embeddings(query=query)
+            _, query_embeddings = self.gen_embedding._make_embeddings(Query=Query)
             return self.vector_db._search_and_output_query(
                 query_embeddings= query_embeddings,
                 json_indent=json_indent
@@ -146,7 +146,7 @@ class TextModelPipeline:
             for passage in context_passages
         ])
     
-    def generate_response(self, query: str, skip_special_tokens= False, max_retries=3) -> tuple[str]:
+    def generate_response(self, Query: str, skip_special_tokens= False, max_retries=3) -> tuple[str]:
         """
         Generate response for a given query
         
@@ -158,32 +158,30 @@ class TextModelPipeline:
         """
         try:
             # Retrieve context
-            context_passages = self.rag_pipeline.retrieve_context(query=query) #self.retrieve_context(query)
-            
-            # Prepare prompt
+            context_passages = self.rag_pipeline.retrieve_context(Query=Query) #self.retrieve_context(query)
+            # Prepare  prompt
             formatted_prompt = PROMPT.format(
-                name="Sora",
-                Context=self.clean_context(context_passages),
-                query=query
+                context=self.clean_context(context_passages),
+                query=Query
             )
             retries = 0
             # Generate response
-            response = self.model.model_response(message=formatted_prompt, 
+            response = self.model.model_response(
+                message=formatted_prompt, 
                 skip_special_tokens=skip_special_tokens)
-            
             # Check language and retry if it's not English
             while detect(response) != 'en' and retries < max_retries:
                 retries += 1
                 self.logger.info(f"Response not in English. Retry {retries}/{max_retries}.")
                 response = self.model.model_response(message=formatted_prompt, skip_special_tokens=skip_special_tokens)
-            if retries == max_retries and detect(response) != 'en':
-                self.logger.info(f"Max retries reached. Returning non-English response.")
+                if retries == max_retries and detect(response) != 'en':
+                    self.logger.info(f"Max retries reached. Returning non-English response.")
             # Filter response
             question, answer = filter_response(output_response=response)
             return question, answer
         except Exception as e:
             self.logger.error(f"Response generation error: {e}")
-            raise
+            #raise
 
 
 def main():
@@ -191,16 +189,13 @@ def main():
     Main execution function
     """
     try:
-        # Initialize pipeline
-        Textmodel = TextModelPipeline(rag_response_limit=5, max_token=1024, upload_data=True)
-        
+        Textmodel = TextModelPipeline()
         # Example query
-        query = "what is Llama model and how it works ?"
-        
+        user_query = "what is Glunet model and how it works?"
         # Generate and print response
-        question, answer = Textmodel.generate_response(query=query)
-        
-        print("Question:", question)
+        question, answer = Textmodel.generate_response(Query=user_query,skip_special_tokens=False)
+        print("------------------------")
+        print("\nQuestion:", question)
         print("Answer:", answer)
     
     except Exception as e:

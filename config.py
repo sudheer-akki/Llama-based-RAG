@@ -35,11 +35,11 @@ class Config:
                 "folder_name": FOLDER,
                 "embed_model_save_path": "all-MiniLM-L6-v2",
                 "stopwords_file": "stop_words.txt",
-                "device": "cpu",
+                "device": "cuda",
                 "remove_stop_words": False,
                 "save_text": False,
                 "chunk_length": 200,
-                "overlap_length": 20,
+                "overlap_length": 10,
                 "upload_data": True
             },
 
@@ -52,7 +52,7 @@ class Config:
                 "Zilliz_CLUSTER_PWD": Zilliz_CLUSTER_PWD,
                 "TOKEN":TOKEN,
                 "URI":URI,
-                "response_limit": 5,
+                "response_limit": 10,
                 "metric_type": "COSINE"
             },
 
@@ -60,12 +60,12 @@ class Config:
                 "model_name": MODEL_NAME,
                 "model_dir": MODEL_DIR,
                 "device": DEVICE,
-                "temperature": 0.1,
+                "temperature": 0.5,
                 "top_p": 0.6,
                 "top_k": None,
                 "num_return_seq": 1,
                 "rep_penalty": 2.5,
-                "max_token": 1024,
+                "max_token": 512,
                 "do_sample": True
             }
         })

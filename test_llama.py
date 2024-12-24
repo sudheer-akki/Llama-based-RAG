@@ -1,4 +1,5 @@
 import os
+os.environ['CURL_CA_BUNDLE'] = ''
 from llm_model import TextModel
 from dotenv import load_dotenv
 
@@ -8,7 +9,7 @@ MODEL_DIR = os.getenv("MODEL_DIR","Llama-3.2-1B")
 
 if __name__=="__main__":
 
-    query = "what is glunet model ?"
+    query = "what is yolo model and how it works ?"
     
     try:
         model = TextModel(model_name=MODEL_NAME, model_dir=MODEL_DIR) 

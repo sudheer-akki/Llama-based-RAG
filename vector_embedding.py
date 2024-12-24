@@ -132,12 +132,14 @@ class GenerateEmbeddings:
                 logger.info(f"Embedding chunked content from '{self.folder_name}' folder")
                 content_to_embed = self.chunked_content
             else:
+                content_to_embed = []
                 logger.error(f"[Error] No content available to generate embeddings")
                 raise Exception(f"[Error] No content available to generate embeddings")
         except Exception as e:
             logger.error(f"[Error] Error in loading content for embeddings: {e}")
             raise Exception(f"[Error] Error in loading content for embeddings \
                            Provide a query or ensure chunked_content is set.: {e}")
+        #print("content_to_embed",content_to_embed)
         embeddings = None
         if content_to_embed:
             embeddings = self._make_embedding_using_torch(sentences=content_to_embed, batch_size=32)

@@ -6,11 +6,27 @@ from typing import Tuple
 from langdetect import detect
 from logging_config import setup_logger 
 logger = setup_logger(pkgname="rag_database")
+from config import Config
+config_manager = Config()
+
+if config_manager.config.TEXT_MODEL_CONFIG.bitsandbytes:
+    #from transformers import LlamaForCausalLM, LlamaTokenizer
+    from transformers import AutoConfig, BitsAndBytesConfig
+    device_map = {
+    "transformer.word_embeddings": 0,
+    "transformer.word_embeddings_layernorm": 0,
+    "lm_head": "cpu",
+    "transformer.h": 0,
+    "transformer.ln_f": 0,
+    }
+
+
 
 class TextModel:
     #@ensure_annotations
     def __init__(self, model_name:str, model_dir:str,max_token:int = 1024, device: str = "cuda", temperature:float = 0.2, top_p:float = 0.6,\
-                 top_k:int = None, num_return_seq:int = 2, rep_penalty:float = 2.5, do_sample:bool = True, \
+                 top_k:int = None, num_return_seq:int = 2, rep_penalty:float = 2.5, do_sample:bool = True,
+                 bitsandbytes=True
                  ):
         """
         Intialized the model and sets generation configuration
@@ -37,6 +53,14 @@ class TextModel:
         self.num_return_seq = num_return_seq
         self.rep_penalty = rep_penalty
         self.do_sample = do_sample
+        self.bitsandbytes = bitsandbytes
+        if self.bitsandbytes:
+            self.bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            llm_int8_enable_fp32_cpu_offload = True,
+            bnb_4bit_compute_dtype=torch.bfloat16)
         #self.model_name = model_name
         self.tokenizer, self.model = self._download_and_load_model(model_name=model_name,save_dir=model_dir)
         #Load and configure the generation config
@@ -109,7 +133,11 @@ class TextModel:
         """
         try:
             logger.info(f"Loading tokenizer from '{os.path.basename(model_dir)}' folder.") 
-            tokenizer = AutoTokenizer.from_pretrained(model_dir, torch_dtype='auto', trust_remote =True)
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_dir, 
+                torch_dtype='auto',
+                trust_remote =True
+            )
             tokenizer.pad_token = tokenizer.eos_token 
         except IOError as e:
             logger.error(f"[Error] Unable to load tokenizer from {os.path.basename(model_dir)}")
@@ -119,7 +147,22 @@ class TextModel:
             #logger.info(f"Downloaded and loaded tokenizer from {model_dir} folder")
         try:
             logger.info(f"Loading model from '{os.path.basename(model_dir)}' folder")  
-            model = AutoModelForCausalLM.from_pretrained(model_dir,revision="main", torch_dtype='auto',trust_remote_code=True)
+            if self.bitsandbytes:
+                logger.info("Model Loading with BitsandBytes...!!!")
+                model = AutoModelForCausalLM.from_pretrained(
+                model_dir,
+                revision="main",
+                device_map="auto",
+                trust_remote_code=True,
+                quantization_config=self.bnb_config
+                )
+                logger.info(f"Model memory footprint {model.get_memory_footprint()}")
+            else:
+                logger.info("Model Loading without BitsandBytes...!!!")
+                model = AutoModelForCausalLM.from_pretrained(
+                model_dir,revision="main",
+                torch_dtype='auto',
+                trust_remote_code=True)
             model = model.to(self.device)
             logger.info(f"Model loaded successfully..!!!")
         except IOError as e:

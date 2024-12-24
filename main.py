@@ -2,12 +2,13 @@ import os
 import asyncio
 import urllib.parse
 import uvicorn
-from fastapi import FastAPI, Query, Depends
+from fastapi import FastAPI, Query, Depends, HTTPException
 from config import Config
 from typing import Optional
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from watchfiles import awatch
+from typing import List, Dict
 
 from rag_pipeline import RAGPipeline, TextModelPipeline
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,10 +51,13 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         logger.error(f"Error during shutdown")
 
-app = FastAPI(lifespan=lifespan)
 
 
-def get_origins():
+def get_origins() -> List[str]:
+    """
+    Get list of allowed origins for CORS.
+    Modify this based on your environment needs.
+    """
     # Get the frontend URL from environment variables with fallback options
     frontend_url = os.getenv("FRONTEND_URL", "https://www.askmeai.de")
     frontend_dns = os.getenv("FRONTEND_DNS", "https://www.askmeai.de")
@@ -69,17 +73,26 @@ def get_origins():
     # Remove any empty origins
     return [origin for origin in origins if origin]
 
-def setup_cors(app):
-    """Setup CORS middleware with allowed origins."""
+def setup_cors(app: FastAPI) -> None:
+    """
+    Setup CORS middleware with allowed origins.
+    
+    Args:
+        app: FastAPI application instance
+    """
     origins = get_origins()
     logger.info(f"Allowed origins: {origins}")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "PUT","POST","DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
+        expose_headers=["*"],
+        max_age=600, 
     )
+
+app = FastAPI(lifespan=lifespan)
 setup_cors(app)
 
 async def watch_folder(app: FastAPI):
@@ -124,9 +137,6 @@ async def startup_event():
             logger.error(f"Error parsing origin {origin}: {e}", exc_info=True)
 
 
-app = FastAPI(lifespan=lifespan)
-
-
 @app.get("/health")
 async def health(components: AppState = Depends(get_components)):
     return {
@@ -138,35 +148,47 @@ async def health(components: AppState = Depends(get_components)):
         }
     }
 
+
+
 @app.get("/search")
 async def get_response(
-    query: str = Query(...),
+    query: str = Query(..., description="Search query string"),
     components: AppState = Depends(get_components)
-    ) -> dict:
+    ) -> Dict:
         """
         Handle search queries by generating response using text model
         
         Args:
             query(str): Input query in string format.
+            components(AppState): Application state containing model components
         Returns:
             dict: A dictionary containing response under key "result"
         Raises:
-            Exeception: If there is an error during model response generation.
+            HTTPException: If there is an error during model response generation.
         """
         try:
             if not components.text_model:
-                raise ValueError("Text model not initialized")
-            
+                raise HTTPException(
+                status_code=500,
+                detail="Text model not initialized"
+            )
+
+            logger.info(f"Received search query: {query}")
+
             question, answer = components.text_model.generate_response(
                 Query=query,
                 skip_special_tokens=False
             )
+            #logger.info(f"Generated response for query: {query}")
             return {"result": answer}
         
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
-            return {"error": "An error occurred while processing your request"}
-
+            logger.exception(f"Error processing search query: {query}")
+            # Return proper error response
+            raise HTTPException(
+                status_code=500,
+                detail=str(e)
+            )
 
 if __name__ == "__main__":
     uvicorn.run(
@@ -174,7 +196,7 @@ if __name__ == "__main__":
         host=os.getenv("HOST", "localhost"),
         port=int(os.getenv("PORT", 2000)),
         reload_includes=["config.py"],
-        reload=True
+        reload=False
     )
  
  

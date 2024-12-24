@@ -9,8 +9,8 @@ load_dotenv()
 class Config:
     def __init__(self):
         # Load environment variables only once
-        MODEL_NAME= os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B")
-        MODEL_DIR= os.getenv("MODEL_DIR", "Llama-3.2-1B")
+        MODEL_NAME= os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B-Instruct")
+        MODEL_DIR= os.getenv("MODEL_DIR", "Llama-3.2-1B-Instruct")
         FOLDER = os.getenv("FOLDER","files")
         Zilliz_CLUSTER_USER = os.getenv("Zilliz_CLUSTER_USER")
         Zilliz_CLUSTER_PWD = os.getenv("Zilliz_CLUSTER_PWD")
@@ -35,7 +35,7 @@ class Config:
                 "folder_name": FOLDER,
                 "embed_model_save_path": "all-MiniLM-L6-v2",
                 "stopwords_file": "stop_words.txt",
-                "device": "cuda",
+                "device": DEVICE,
                 "remove_stop_words": False,
                 "save_text": False,
                 "chunk_length": 200,
@@ -52,7 +52,7 @@ class Config:
                 "Zilliz_CLUSTER_PWD": Zilliz_CLUSTER_PWD,
                 "TOKEN":TOKEN,
                 "URI":URI,
-                "response_limit": 10,
+                "response_limit": 5,
                 "metric_type": "COSINE"
             },
 
@@ -66,6 +66,7 @@ class Config:
                 "num_return_seq": 1,
                 "rep_penalty": 2.5,
                 "max_token": 512,
-                "do_sample": True
+                "do_sample": True,
+                "bitsandbytes":True
             }
         })

@@ -52,3 +52,6 @@ update_db_old.py
 logs
 /file_list.txt
 /all-MiniLM-L6-v2
+/bitsandbytes*
+/backup
+*.drawio

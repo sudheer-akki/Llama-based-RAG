@@ -55,7 +55,10 @@ class RAGPipeline:
 
     def _insert_data_db(self):
         data,_ = self.gen_embedding._make_embeddings()
-        return self.vector_db._insert_data(data=data)
+        if _ is None:
+            pass
+        else:
+            return self.vector_db._insert_data(data=data)
     
     def retrieve_context(self, Query, json_indent: int = 3):
         """
@@ -160,6 +163,7 @@ class TextModelPipeline:
             # Retrieve context
             context_passages = self.rag_pipeline.retrieve_context(Query=Query) #self.retrieve_context(query)
             # Prepare  prompt
+            #print("context_passages",context_passages)
             formatted_prompt = PROMPT.format(
                 context=self.clean_context(context_passages),
                 query=Query

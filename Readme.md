@@ -1,6 +1,6 @@
 ## RAG System using Zilliz Vector Database
 
-<img src="assets/LLM_RAG.drawio.png" width="800" height="300">
+[//]: <img src="assets/LLM_RAG.drawio.png" width="800" height="300">
 
 ### List of AI models:
 * **all-MiniLM-L6-v2** - Embedding model (Best for Clustering or Semantic Search)
